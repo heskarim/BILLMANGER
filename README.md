@@ -193,15 +193,12 @@ billing.db
 ## 🔄 Moving to a New PC — Quick Summary
 
 ```
-1. Copy the BILLING folder to the new PC
-2. Install Node.js from https://nodejs.org  (if not installed)
-3. Open terminal in the BILLING folder
-4. npm install
-5. npm run dev
-6. Open http://localhost:5173
+1. Copy the BILLING folder to the new PC (or clone the repo)
+2. Install Node.js from https://nodejs.org (if not already installed)
+3. Double-click the "start.bat" file (on Windows) or run "./start.sh" (on Mac/Linux)
 ```
 
-> ⚡ **Your data (`billing.db`) moves with the folder** — no migration needed.
+> ⚡ **That's it!** The script automatically installs dependencies on the first run, starts the local server, and opens the app in your default web browser at `http://localhost:5173`.
 
 ---
 
