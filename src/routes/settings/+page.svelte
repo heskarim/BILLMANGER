@@ -251,13 +251,13 @@
   </form>
 
   <!-- Database Utilities Section -->
-  <div class="card settings-card-utility" style="margin-top: 2rem;">
-    <h3 class="section-title" style="margin-bottom: 0.75rem;">Database Utilities</h3>
-    <p class="text-secondary" style="margin-bottom: 1.5rem; font-size: 0.95rem;">
+  <div class="card settings-card-utility">
+    <h3 class="section-title">Database Utilities</h3>
+    <p class="utility-desc">
       Export a binary copy of your local SQLite database file (`billing.db`) to your PC for backup, security, or data transfer.
     </p>
-    <div style="display: flex; gap: 1rem;">
-      <a href="/api/backup" class="btn btn-secondary" style="display: inline-flex; align-items: center; gap: 0.5rem;">
+    <div class="utility-actions">
+      <a href="/api/backup" class="btn btn-secondary utility-btn">
         <Download size={16} />
         <span>Export Database Backup</span>
       </a>
@@ -266,72 +266,126 @@
 </div>
 
 <style>
+  /* ── Container ── */
   .settings-container {
     max-width: 1000px;
     margin: 0 auto;
   }
 
+  /* ── Page Header ── */
   .page-header {
     display: flex;
     align-items: center;
-    gap: 1rem;
-    margin-bottom: 2rem;
+    gap: var(--space-5);
+    margin-bottom: var(--space-8);
+    animation: fadeInUp 0.4s var(--ease-spring) both;
   }
 
   .header-icon {
-    background: var(--bg-card);
-    border: 1px solid var(--border-color);
-    padding: 0.75rem;
-    border-radius: var(--border-radius-lg);
+    position: relative;
+    width: 56px;
+    height: 56px;
     display: flex;
     align-items: center;
     justify-content: center;
-    color: var(--color-primary);
+    border-radius: var(--border-radius-lg);
+    background: var(--bg-card);
+    color: var(--color-accent);
+    flex-shrink: 0;
+  }
+
+  .header-icon::before {
+    content: '';
+    position: absolute;
+    inset: -2px;
+    border-radius: calc(var(--border-radius-lg) + 2px);
+    background: linear-gradient(
+      135deg,
+      var(--color-accent) 0%,
+      var(--color-accent-hover) 50%,
+      oklch(0.7 0.14 200) 100%
+    );
+    z-index: -1;
+  }
+
+  .header-icon::after {
+    content: '';
+    position: absolute;
+    inset: -2px;
+    border-radius: calc(var(--border-radius-lg) + 2px);
+    background: linear-gradient(
+      135deg,
+      var(--color-accent) 0%,
+      var(--color-accent-hover) 50%,
+      oklch(0.7 0.14 200) 100%
+    );
+    z-index: -2;
+    filter: blur(12px);
+    opacity: 0.4;
+    animation: breatheGlow 3s ease-in-out infinite;
   }
 
   .page-header h1 {
-    font-size: 1.75rem;
-    letter-spacing: -0.02em;
+    font-size: var(--text-2xl);
+    font-family: var(--font-display);
+    letter-spacing: -0.03em;
+    color: var(--text-primary);
+    margin: 0;
+    line-height: 1.2;
   }
 
   .page-header p {
-    font-size: 0.95rem;
+    font-size: var(--text-sm);
+    margin: var(--space-1) 0 0;
   }
 
-  /* Notifications */
+  /* ── Notification Banners ── */
   .banner {
     display: flex;
     align-items: center;
-    gap: 0.75rem;
-    padding: 1rem 1.25rem;
+    gap: var(--space-3);
+    padding: var(--space-4) var(--space-5);
     border-radius: var(--border-radius-md);
-    margin-bottom: 1.5rem;
+    margin-bottom: var(--space-6);
     font-weight: 500;
+    font-size: var(--text-sm);
+    animation: fadeInUp 0.3s var(--ease-spring) both;
   }
 
   .banner-success {
     background-color: var(--color-success-bg);
     border: 1px solid var(--color-success);
-    color: hsl(142, 76%, 80%);
+    color: oklch(0.85 0.15 152);
   }
 
   .banner-error {
-    background-color: rgba(239, 68, 68, 0.1);
+    background-color: var(--color-danger-bg);
     border: 1px solid var(--color-danger);
-    color: hsl(350, 80%, 80%);
+    color: oklch(0.85 0.15 25);
   }
 
-  /* Form Layout */
+  /* ── Form Card ── */
   .settings-form {
     display: flex;
     flex-direction: column;
-    gap: 2rem;
+    gap: var(--space-8);
+    padding: var(--space-8) !important;
+    animation: fadeInUp 0.5s var(--ease-spring) both;
+    animation-delay: 100ms;
   }
 
+  .settings-form label {
+    font-size: var(--text-sm);
+    font-family: var(--font-display);
+    font-weight: 600;
+    color: var(--text-secondary);
+  }
+
+  /* ── Form Grid ── */
   .form-grid {
     display: grid;
     grid-template-columns: 1.6fr 1fr;
-    gap: 2.5rem;
+    gap: var(--space-8);
   }
 
   @media (max-width: 850px) {
@@ -343,13 +397,13 @@
   .fields-section {
     display: flex;
     flex-direction: column;
-    gap: 0.5rem;
+    gap: var(--space-3);
   }
 
   .form-row {
     display: grid;
     grid-template-columns: 1fr 1fr;
-    gap: 1rem;
+    gap: var(--space-4);
   }
 
   @media (max-width: 600px) {
@@ -358,34 +412,37 @@
     }
   }
 
-  /* Logo Uploader */
+  /* ── Logo Uploader ── */
   .logo-section {
     display: flex;
     flex-direction: column;
-    gap: 0.75rem;
+    gap: var(--space-3);
   }
 
   .section-label {
     font-family: var(--font-display);
-    font-weight: 500;
+    font-weight: 600;
     color: var(--text-secondary);
-    font-size: 0.9rem;
+    font-size: var(--text-sm);
+    border-left: 3px solid var(--color-accent);
+    padding-left: var(--space-3);
   }
 
   .logo-uploader-card {
-    border: 2px dashed var(--border-color);
+    border: 2px dashed oklch(0.3 0.02 250);
     background-color: var(--bg-input);
     border-radius: var(--border-radius-lg);
     display: flex;
     align-items: center;
     justify-content: center;
-    padding: 2.5rem;
+    padding: var(--space-8);
     min-height: 250px;
-    transition: border-color var(--transition-fast);
+    transition: border-color 0.3s var(--ease-spring), background-color 0.3s var(--ease-spring);
   }
 
   .logo-uploader-card:hover {
-    border-color: var(--border-focus);
+    border-color: var(--color-accent);
+    background-color: var(--color-accent-subtle);
   }
 
   .logo-dropzone {
@@ -393,23 +450,25 @@
     flex-direction: column;
     align-items: center;
     text-align: center;
+    gap: var(--space-1);
   }
 
   .dropzone-text {
-    margin-top: 1rem;
+    margin-top: var(--space-3);
     font-weight: 500;
     color: var(--text-primary);
+    font-size: var(--text-sm);
   }
 
   .dropzone-sub {
-    font-size: 0.8rem;
+    font-size: var(--text-xs);
     color: var(--text-muted);
-    margin-bottom: 1.5rem;
+    margin-bottom: var(--space-5);
   }
 
   .logo-select-btn {
-    padding: 0.5rem 1rem;
-    font-size: 0.85rem;
+    padding: var(--space-2) var(--space-5);
+    font-size: var(--text-sm);
   }
 
   .hidden-file-input {
@@ -420,7 +479,7 @@
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 1.25rem;
+    gap: var(--space-5);
     width: 100%;
   }
 
@@ -429,10 +488,10 @@
     max-height: 180px;
     object-fit: contain;
     border-radius: var(--border-radius-md);
-    background-color: white; /* contrast bg for logo */
-    padding: 8px;
+    background-color: white;
+    padding: var(--space-2);
     border: 1px solid var(--border-color);
-    box-shadow: var(--shadow-sm);
+    box-shadow: var(--shadow-md);
   }
 
   .remove-logo-btn {
@@ -441,24 +500,76 @@
     color: var(--color-danger);
     font-family: var(--font-display);
     font-weight: 600;
-    font-size: 0.9rem;
+    font-size: var(--text-sm);
     cursor: pointer;
-    transition: opacity var(--transition-fast);
+    transition: opacity 0.2s var(--ease-spring);
+    padding: var(--space-1) var(--space-2);
+    border-radius: var(--border-radius-sm);
   }
 
   .remove-logo-btn:hover {
     opacity: 0.8;
+    background: var(--color-danger-bg);
   }
 
+  /* ── Form Footer ── */
   .form-footer {
     display: flex;
     justify-content: flex-end;
-    padding-top: 1.5rem;
+    padding-top: var(--space-6);
     border-top: 1px solid var(--border-color);
   }
 
   .btn-save {
-    padding-left: 2rem;
-    padding-right: 2rem;
+    padding-left: var(--space-8);
+    padding-right: var(--space-8);
+    position: relative;
+    transition: box-shadow 0.3s var(--ease-spring), transform 0.2s var(--ease-spring);
+  }
+
+  .btn-save:not(:disabled):hover {
+    box-shadow: 0 0 20px oklch(0.7 0.15 185 / 0.35), var(--shadow-md);
+    transform: translateY(-1px);
+  }
+
+  .btn-save:not(:disabled):active {
+    transform: translateY(0px);
+  }
+
+  /* ── Database Utilities Card ── */
+  .settings-card-utility {
+    margin-top: var(--space-8);
+    background: oklch(0.19 0.02 75 / 0.15) !important;
+    border-color: oklch(0.4 0.06 75 / 0.3) !important;
+    padding: var(--space-8) !important;
+    animation: fadeInUp 0.5s var(--ease-spring) both;
+    animation-delay: 200ms;
+  }
+
+  .section-title {
+    font-family: var(--font-display);
+    font-size: var(--text-lg);
+    font-weight: 600;
+    color: var(--text-primary);
+    margin: 0 0 var(--space-3) 0;
+    letter-spacing: -0.02em;
+  }
+
+  .utility-desc {
+    color: var(--text-secondary);
+    font-size: var(--text-sm);
+    margin: 0 0 var(--space-6) 0;
+    line-height: 1.6;
+  }
+
+  .utility-actions {
+    display: flex;
+    gap: var(--space-4);
+  }
+
+  .utility-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
   }
 </style>

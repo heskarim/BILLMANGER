@@ -21,7 +21,7 @@ function convertUnder100(n: number): string {
   }
   
   if (ten === 8) { // 80-89: quatre-vingt
-    if (unit === 0) return 'quatre-vingt';
+    if (unit === 0) return 'quatre-vingts';
     return 'quatre-vingt-' + UNITS[unit];
   }
   
@@ -79,7 +79,14 @@ function integerToWords(n: number): string {
       let chunkStr = '';
       if (chunk.value === 1000) {
         // "mille", not "un mille"
-        chunkStr = quotient === 1 ? 'mille' : convertUnder1000(quotient) + ' mille';
+        // Strip any trailing "s" at the end of the quotient words for cent/vingt before "mille"
+        let quotientStr = convertUnder1000(quotient);
+        if (quotientStr.endsWith('cents')) {
+          quotientStr = quotientStr.slice(0, -1);
+        } else if (quotientStr.endsWith('vingts')) {
+          quotientStr = quotientStr.slice(0, -1);
+        }
+        chunkStr = quotient === 1 ? 'mille' : quotientStr + ' mille';
       } else {
         const label = quotient > 1 && chunk.pluralLabel ? chunk.pluralLabel : chunk.label;
         chunkStr = convertUnder1000(quotient) + ' ' + label;

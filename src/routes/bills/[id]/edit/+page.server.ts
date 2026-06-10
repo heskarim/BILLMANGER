@@ -45,13 +45,14 @@ export const actions: Actions = {
     const montant_ht = parseFloat(data.get('montant_ht') as string || '0');
     const montant_ttc = parseFloat(data.get('montant_ttc') as string || '0');
     const amount_in_words = data.get('amount_in_words') as string || '';
+    const notes = data.get('notes') as string || '';
     
     const itemsJson = data.get('items') as string;
 
     // Validation checks
-    if (!bill_number || !type || !date || !client_name) {
+    if (!bill_number || !type || !client_name) {
       return fail(400, {
-        error: 'Bill Number, Document Type, Date, and Client Name are required.',
+        error: 'Bill Number, Document Type, and Client Name are required.',
         values: { bill_number, type, date, client_name }
       });
     }
@@ -85,7 +86,8 @@ export const actions: Actions = {
         tva_rate,
         montant_ht,
         montant_ttc,
-        amount_in_words
+        amount_in_words,
+        notes: type === 'livraison' ? notes : ''
       }, items.map((item: any, idx: number) => ({
         product_name: item.product_name,
         unit: item.unit || 'UN',

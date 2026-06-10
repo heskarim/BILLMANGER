@@ -21,9 +21,25 @@
   // ----------------------------------------------------
   let type = $state<'facture' | 'proforma' | 'livraison'>('facture');
   let billNumber = $state(data.defaultNumber || '');
-  let date = $state(new Date().toISOString().split('T')[0]);
+  let date = $state(''); // Empty by default
   let contractNumber = $state('');
   let contractDate = $state('');
+
+  let showPreview = $state(false);
+
+  // Helper to format date
+  function formatDate(dStr: string): string {
+    if (!dStr) return '';
+    try {
+      const parts = dStr.split('-');
+      if (parts.length === 3) {
+        return `${parts[2]}/${parts[1]}/${parts[0]}`; // DD/MM/YYYY
+      }
+      return dStr;
+    } catch {
+      return dStr;
+    }
+  }
 
   // Client Details
   let clientName = $state('');
@@ -66,7 +82,7 @@
     hasTva ? (subtotalHT * (tvaRate / 100)) : 0
   );
   let totalTTC = $derived(
-    subtotalHT + tvaAmount
+    subtotalHT
   );
   
   // Dynamic spelling in French words
@@ -75,6 +91,7 @@
   );
 
   let saving = $state(false);
+  let notes = $state('');
 
   // ----------------------------------------------------
   // SWITCH BILL TYPE NUMBER AUTO-FETCH
@@ -212,16 +229,29 @@
   }
 </script>
 
-<div class="editor-container">
+<div class="editor-container" class:with-preview={showPreview}>
   
   <!-- Form Header -->
-  <header class="page-header">
+  <header class="page-header animate-in">
     <div class="header-icon">
       <Receipt size={28} />
     </div>
-    <div>
+    <div class="header-text">
       <h1>Create New Billing Document</h1>
       <p class="text-secondary">Draft standard invoices, proforma documents, or delivery shipment sheets.</p>
+    </div>
+    <div class="header-actions no-print">
+      <button 
+        type="button" 
+        class="btn btn-secondary" 
+        onclick={() => showPreview = !showPreview}
+      >
+        {#if showPreview}
+          Hide Live Preview
+        {:else}
+          Show Live Preview
+        {/if}
+      </button>
     </div>
   </header>
 
@@ -232,13 +262,14 @@
     </div>
   {/if}
 
-  <form method="POST" action="?/createBill" use:enhance={() => {
-    saving = true;
-    return async ({ update }) => {
-      await update();
-      saving = false;
-    };
-  }} class="editor-form">
+  <div class="editor-workspace">
+    <form method="POST" action="?/createBill" use:enhance={() => {
+      saving = true;
+      return async ({ update }) => {
+        await update();
+        saving = false;
+      };
+    }} class="editor-form">
     
     <!-- 1. DOCUMENT TYPE SELECTOR CARDS -->
     <div class="type-selector-grid">
@@ -247,6 +278,7 @@
         class="type-card" 
         class:active={type === 'facture'} 
         onclick={() => handleTypeChange('facture')}
+        style="--i: 0"
       >
         <div class="type-icon-wrapper facture-icon">
           <Receipt size={24} />
@@ -262,6 +294,7 @@
         class="type-card" 
         class:active={type === 'proforma'} 
         onclick={() => handleTypeChange('proforma')}
+        style="--i: 1"
       >
         <div class="type-icon-wrapper proforma-icon">
           <FileText size={24} />
@@ -277,6 +310,7 @@
         class="type-card" 
         class:active={type === 'livraison'} 
         onclick={() => handleTypeChange('livraison')}
+        style="--i: 2"
       >
         <div class="type-icon-wrapper livraison-icon">
           <Truck size={24} />
@@ -295,9 +329,10 @@
     <input type="hidden" name="montant_ttc" value={type === 'livraison' ? 0 : totalTTC} />
     <input type="hidden" name="tva_rate" value={hasTva ? tvaRate : 0} />
     <input type="hidden" name="amount_in_words" value={spelledAmount} />
+    <input type="hidden" name="notes" value={notes} />
 
     <!-- 2. DOCUMENT METADATA -->
-    <div class="card form-section">
+    <div class="card form-section" style="animation: fadeInUp 0.5s var(--ease-spring) both; animation-delay: 120ms;">
       <h3 class="section-title">Document Metadata</h3>
       <div class="metadata-grid">
         <div class="form-group">
@@ -321,7 +356,6 @@
             name="date" 
             class="input-field" 
             bind:value={date} 
-            required 
           />
         </div>
 
@@ -351,7 +385,7 @@
     </div>
 
     <!-- 3. CLIENT INFO (WITH AUTOCOMPLETE) -->
-    <div class="card form-section">
+    <div class="card form-section client-section" style="animation: fadeInUp 0.5s var(--ease-spring) both; animation-delay: 200ms;">
       <h3 class="section-title">Client Details</h3>
       <div class="client-grid">
         <div class="form-group relative">
@@ -419,7 +453,7 @@
     </div>
 
     <!-- 4. DYNAMIC LINE ITEMS TABLE -->
-    <div class="card form-section items-section">
+    <div class="card form-section items-section" style="animation: fadeInUp 0.5s var(--ease-spring) both; animation-delay: 280ms;">
       <div class="items-header">
         <h3 class="section-title">Line Items</h3>
         <button type="button" class="btn btn-secondary btn-sm" onclick={addRow}>
@@ -548,7 +582,7 @@
 
     <!-- 5. CALCULATIONS & SPELLED WORDS -->
     {#if type !== 'livraison'}
-      <div class="card calculation-layout">
+      <div class="card calculation-layout" style="animation: fadeInUp 0.5s var(--ease-spring) both; animation-delay: 360ms;">
         <div class="spelling-block">
           <span class="spelling-title">Montant en Lettres (French Words)</span>
           <p class="spelling-content">{spelledAmount}</p>
@@ -583,7 +617,23 @@
       </div>
     {/if}
 
-    <!-- 6. SUBMIT BUTTONS -->
+    <!-- 6. NOTES (Bon de Livraison only) -->
+    {#if type === 'livraison'}
+      <div class="card form-section" style="animation: fadeInUp 0.5s var(--ease-spring) both; animation-delay: 380ms;">
+        <h3 class="section-title">Observations / Remarques <span style="font-size: var(--text-xs); color: var(--text-muted); font-weight: 400;">(Optionnel)</span></h3>
+        <div class="form-group">
+          <textarea
+            id="notes_field"
+            class="input-field notes-textarea"
+            bind:value={notes}
+            placeholder="Ex: Livraison effectuée dans les délais convenus. Matériel en bon état..."
+            rows="3"
+          ></textarea>
+        </div>
+      </div>
+    {/if}
+
+    <!-- 7. SUBMIT BUTTONS -->
     <div class="form-actions">
       <a href="/" class="btn btn-secondary">Cancel</a>
       <button 
@@ -596,70 +646,338 @@
     </div>
 
   </form>
+
+    {#if showPreview}
+      <!-- Live Preview Panel on the Right (inside workspace flex) -->
+      <aside class="live-preview-panel no-print">
+        <div class="preview-label">Live Preview</div>
+        <div class="preview-zoom-container">
+          <div class="preview-a4">
+            <!-- Header -->
+            <div style="border-bottom: 2px solid #1a1a2e; padding-bottom: 10px; margin-bottom: 14px; display: grid; grid-template-columns: 1.2fr 1fr; gap: 14px; font-size: 8px;">
+              <div style="display: flex; gap: 10px; align-items: start;">
+                {#if data.settings?.logo}
+                  <div style="width: 44px; height: 44px; border: 1px solid #ddd; overflow: hidden; display: flex; align-items: center; justify-content: center; background: #f9f9f9; flex-shrink: 0;">
+                    <img src={data.settings.logo} alt="" style="max-width: 40px; max-height: 40px; object-fit: contain;" />
+                  </div>
+                {/if}
+                <div>
+                  <h2 style="font-size: 14px; font-weight: 800; margin: 0; color: #1a1a2e; font-family: 'Plus Jakarta Sans', sans-serif;">{data.settings?.company_name || 'TECH IP'}</h2>
+                  <p style="font-size: 8px; margin: 2px 0 0; color: #444; line-height: 1.3;">{data.settings?.address || ''}</p>
+                  <p style="font-size: 8px; margin: 2px 0 0; color: #444;"><strong>Tél:</strong> {data.settings?.phone || '—'}</p>
+                  <p style="font-size: 8px; margin: 2px 0 0; color: #444;"><strong>Email:</strong> {data.settings?.email || '—'}</p>
+                </div>
+              </div>
+              <div style="border-left: 1.5px solid #1a1a2e; padding-left: 10px; display: flex; flex-direction: column; gap: 2px; color: #333; line-height: 1.3; font-size: 8px;">
+                <div><strong>RC:</strong> {data.settings?.rc || '—'}</div>
+                <div><strong>NIF:</strong> {data.settings?.nif || '—'}</div>
+                <div><strong>NIS:</strong> {data.settings?.nis || '—'}</div>
+                {#if data.settings?.art}<div><strong>ART:</strong> {data.settings.art}</div>{/if}
+                <div style="font-size: 7.5px; word-break: break-all;"><strong>RIB:</strong> {data.settings?.rib || '—'}</div>
+              </div>
+            </div>
+
+            <!-- Unified Metadata & Client Table -->
+            <table class="doc-meta-table-preview" style="width: 100%; border-collapse: collapse; margin-bottom: 12px; font-size: 8.5px;">
+              <thead>
+                <tr>
+                  <th colspan="2" style="border: 1px solid #1a1a2e; padding: 4px 6px; background: #1a1a2e; color: #1a1a2e; text-align: center; text-transform: uppercase; font-weight: 800; font-size: 9.5px; letter-spacing: 0.03em;">
+                    <span style="color: white;">{#if type === 'facture'}FACTURE{:else if type === 'proforma'}FACTURE PROFORMA{:else}BON DE LIVRAISON{/if} N° {billNumber || '----'}</span>
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td style="border: 1px solid #1a1a2e; padding: 4px 6px; width: 50%;"><strong>Date:</strong> {date ? formatDate(date) : '—'}</td>
+                  <td style="border: 1px solid #1a1a2e; padding: 4px 6px; width: 50%;">
+                    {#if contractNumber}
+                      <strong>Contrat N°:</strong> {contractNumber} {#if contractDate}du {formatDate(contractDate)}{/if}
+                    {:else}
+                      <strong>Contrat:</strong> —
+                    {/if}
+                  </td>
+                </tr>
+                <tr>
+                  <td colspan="2" style="border: 1px solid #1a1a2e; padding: 3px 6px; background: #f0f0f5; color: #1a1a2e; font-weight: 700; text-transform: uppercase; font-size: 8px; letter-spacing: 0.02em;">Client</td>
+                </tr>
+                <tr>
+                  <td style="border: 1px solid #1a1a2e; padding: 4px 6px;"><strong>Client:</strong> {clientName || '—'}</td>
+                  <td style="border: 1px solid #1a1a2e; padding: 4px 6px;"><strong>Code Client:</strong> {clientCode || '—'}</td>
+                </tr>
+                {#if clientAddress}
+                  <tr>
+                    <td colspan="2" style="border: 1px solid #1a1a2e; padding: 4px 6px;"><strong>Adresse:</strong> {clientAddress}</td>
+                  </tr>
+                {/if}
+              </tbody>
+            </table>
+
+            <!-- Items Table -->
+            <div style="flex: 1; margin-bottom: 12px;">
+              <table style="width: 100%; border-collapse: collapse; font-size: 8.5px;">
+                <thead>
+                  <tr style="background: #f0f0f5;">
+                    <th style="border: 1px solid #1a1a2e; padding: 4px; text-align: center; width: 6%;">N°</th>
+                    <th style="border: 1px solid #1a1a2e; padding: 4px; text-align: left; width: 54%;">Désignation</th>
+                    <th style="border: 1px solid #1a1a2e; padding: 4px; text-align: center; width: 10%;">Unité</th>
+                    {#if type !== 'livraison'}
+                      <th style="border: 1px solid #1a1a2e; padding: 4px; text-align: right; width: 10%;">P.U.</th>
+                    {/if}
+                    <th style="border: 1px solid #1a1a2e; padding: 4px; text-align: center; width: 10%;">Qté</th>
+                    {#if type !== 'livraison'}
+                      <th style="border: 1px solid #1a1a2e; padding: 4px; text-align: right; width: 10%;">Total</th>
+                    {/if}
+                  </tr>
+                </thead>
+                <tbody>
+                  {#each items as item, idx}
+                    <tr>
+                      <td style="border: 1px solid #1a1a2e; padding: 4px; text-align: center;">{idx + 1}</td>
+                      <td style="border: 1px solid #1a1a2e; padding: 4px; text-align: left;">{item.product_name || '...'}</td>
+                      <td style="border: 1px solid #1a1a2e; padding: 4px; text-align: center;">{item.unit || 'UN'}</td>
+                      {#if type !== 'livraison'}
+                        <td style="border: 1px solid #1a1a2e; padding: 4px; text-align: right;">{(item.unit_price || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
+                      {/if}
+                      <td style="border: 1px solid #1a1a2e; padding: 4px; text-align: center;">{item.quantity || 0}</td>
+                      {#if type !== 'livraison'}
+                        <td style="border: 1px solid #1a1a2e; padding: 4px; text-align: right;">{(item.total_price || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
+                      {/if}
+                    </tr>
+                  {/each}
+                </tbody>
+              </table>
+            </div>
+
+            <!-- Totals / Spelling / Signatures -->
+            {#if type !== 'livraison'}
+              <div style="display: grid; grid-template-columns: 1.5fr 1.1fr; gap: 10px; margin-top: 8px; border-top: 1.5px solid #1a1a2e; padding-top: 8px;">
+                <div style="border: 1px solid #1a1a2e; border-radius: 3px; padding: 6px; font-size: 8px;">
+                  <strong style="text-decoration: underline; display: block; margin-bottom: 2px;">Facture arrêtée à la somme de:</strong>
+                  <span style="font-style: italic; color: #444;">{spelledAmount}</span>
+                </div>
+                <table style="width: 100%; border-collapse: collapse; font-size: 8px;">
+                  <tbody>
+                    <tr>
+                      <td style="border: 1px solid #1a1a2e; padding: 3px; text-align: left;">Montant HT</td>
+                      <td style="border: 1px solid #1a1a2e; padding: 3px; text-align: right;">{subtotalHT.toLocaleString(undefined, { minimumFractionDigits: 2 })} DA</td>
+                    </tr>
+                    {#if hasTva}
+                      <tr>
+                        <td style="border: 1px solid #1a1a2e; padding: 3px; text-align: left;">TVA ({tvaRate}%)</td>
+                        <td style="border: 1px solid #1a1a2e; padding: 3px; text-align: right;">&nbsp;</td>
+                      </tr>
+                    {/if}
+                    <tr style="background: #f0f0f5; font-weight: 800;">
+                      <td style="border: 1px solid #1a1a2e; padding: 3.5px; text-align: left;">Montant TTC</td>
+                      <td style="border: 1px solid #1a1a2e; padding: 3.5px; text-align: right;">{totalTTC.toLocaleString(undefined, { minimumFractionDigits: 2 })} DA</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            {/if}
+
+            {#if type === 'livraison'}
+              {#if notes}
+                <div style="border: 1px solid #1a1a2e; border-radius: 2px; padding: 5px 7px; margin-top: 10px; font-size: 7.5px;">
+                  <strong style="display: block; text-decoration: underline; margin-bottom: 2px; text-transform: uppercase; font-size: 7px;">Observations / Remarques:</strong>
+                  <span style="color: #444; white-space: pre-wrap;">{notes}</span>
+                </div>
+              {/if}
+              <div style="display: flex; justify-content: space-between; margin-top: 18px; font-size: 8px; font-weight: 700;">
+                <div>Accusé de réception (Client)</div>
+                <div>Signature &amp; Cachet (Fournisseur)</div>
+              </div>
+            {/if}
+          </div>
+        </div>
+      </aside>
+    {/if}
+  </div>
 </div>
 
 <style>
+  /* =================================================== */
   .editor-container {
     max-width: 1100px;
     margin: 0 auto;
-    padding-bottom: 3rem;
+    transition: max-width var(--duration-normal) var(--ease-spring);
   }
 
+  .editor-container.with-preview {
+    max-width: 1600px;
+  }
+
+  .editor-workspace {
+    display: flex;
+    gap: var(--space-6);
+    align-items: flex-start;
+    width: 100%;
+  }
+
+  .editor-form {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .client-section {
+    position: relative;
+    z-index: 3;
+  }
+
+  .live-preview-panel {
+    width: 600px;
+    position: sticky;
+    top: var(--space-6);
+    height: calc(100vh - 120px);
+    overflow-y: auto;
+    background: oklch(0.16 0.015 250);
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius-lg);
+    padding: var(--space-6) var(--space-4);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    box-shadow: inset 0 2px 8px oklch(0 0 0 / 0.4), var(--shadow-sm);
+  }
+
+  .preview-zoom-container {
+    width: 100%;
+    display: flex;
+    justify-content: center;
+  }
+
+  .preview-a4 {
+    background: white;
+    color: #1a1a2e;
+    width: 21cm;
+    min-height: 29.7cm;
+    padding: 1.5cm;
+    box-shadow: 0 12px 36px rgba(0, 0, 0, 0.4), 0 2px 6px rgba(0, 0, 0, 0.15);
+    transform: scale(0.62);
+    transform-origin: top center;
+    margin-bottom: calc(-29.7cm * 0.38);
+    box-sizing: border-box;
+    border: 1px solid rgba(0, 0, 0, 0.08);
+    border-radius: 2px;
+  }
+
+  .preview-a4, .preview-a4 h2, .preview-a4 p, .preview-a4 td, .preview-a4 th, .preview-a4 span {
+    font-family: 'DM Sans', system-ui, -apple-system, sans-serif;
+    color: #1a1a2e;
+  }
+
+  .preview-label {
+    font-family: var(--font-display);
+    font-size: var(--text-xs);
+    font-weight: 600;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    margin-bottom: var(--space-4);
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    align-self: center;
+  }
+
+  .preview-label::before,
+  .preview-label::after {
+    content: '';
+    height: 1px;
+    width: 30px;
+    background: var(--border-color);
+    display: inline-block;
+  }
+
+  .autocomplete-dropdown {
+    overflow-x: hidden;
+    z-index: 9999 !important;
+  }
+
+  .item-row:focus-within {
+    position: relative;
+    z-index: 20 !important;
+  }
+
+  /* ... (remaining styles) */
   .page-header {
     display: flex;
     align-items: center;
-    gap: 1rem;
-    margin-bottom: 2rem;
+    gap: var(--space-4);
+    margin-bottom: var(--space-8);
+    animation: fadeInUp 0.5s var(--ease-spring) both;
   }
 
   .header-icon {
-    background: var(--bg-card);
-    border: 1px solid var(--border-color);
-    padding: 0.75rem;
+    background: linear-gradient(135deg, var(--color-accent), oklch(0.68 0.14 230));
+    color: oklch(0.13 0.015 250);
+    padding: var(--space-4);
     border-radius: var(--border-radius-lg);
     display: flex;
     align-items: center;
     justify-content: center;
-    color: var(--color-primary);
+    box-shadow: 0 4px 12px var(--color-accent-glow);
+    flex-shrink: 0;
+  }
+
+  .header-text {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
   }
 
   .page-header h1 {
-    font-size: 1.75rem;
-    letter-spacing: -0.02em;
+    font-size: var(--text-2xl);
+    font-family: var(--font-display);
+    letter-spacing: -0.03em;
+    font-weight: 700;
+    color: var(--text-primary);
+    animation: fadeInUp 0.5s var(--ease-spring) both;
+    animation-delay: 60ms;
   }
 
   .page-header p {
-    font-size: 0.95rem;
+    font-size: var(--text-sm);
+    color: var(--text-secondary);
+    animation: fadeInUp 0.5s var(--ease-spring) both;
+    animation-delay: 120ms;
   }
 
-  /* Notifications */
+  /* ===================================================
+     ERROR BANNER
+     =================================================== */
   .banner {
     display: flex;
     align-items: center;
-    gap: 0.75rem;
-    padding: 1rem 1.25rem;
+    gap: var(--space-3);
+    padding: var(--space-4) var(--space-5);
     border-radius: var(--border-radius-md);
-    margin-bottom: 1.5rem;
+    margin-bottom: var(--space-6);
     font-weight: 500;
   }
 
   .banner-error {
-    background-color: rgba(239, 68, 68, 0.1);
+    background-color: var(--color-danger-bg);
     border: 1px solid var(--color-danger);
-    color: hsl(350, 80%, 80%);
+    color: oklch(0.85 0.15 25);
   }
 
+  /* ===================================================
+     EDITOR FORM LAYOUT
+     =================================================== */
   .editor-form {
     display: flex;
     flex-direction: column;
-    gap: 2rem;
+    gap: var(--space-6);
   }
 
-  /* Document Type Selector */
+  /* ===================================================
+     TYPE SELECTOR CARDS
+     =================================================== */
   .type-selector-grid {
     display: grid;
     grid-template-columns: repeat(3, 1fr);
-    gap: 1rem;
+    gap: var(--space-4);
   }
 
   @media (max-width: 768px) {
@@ -672,55 +990,69 @@
     background-color: var(--bg-card);
     border: 1px solid var(--border-color);
     border-radius: var(--border-radius-lg);
-    padding: 1.25rem 1.5rem;
+    padding: var(--space-5) var(--space-6);
     display: flex;
     align-items: center;
-    gap: 1rem;
+    gap: var(--space-4);
     cursor: pointer;
     text-align: left;
-    transition: all var(--transition-fast);
+    transition: all var(--duration-fast) var(--ease-spring);
+    animation: fadeInUp 0.5s var(--ease-spring) both;
+    animation-delay: calc(var(--i, 0) * 60ms);
   }
 
   .type-card:hover {
-    transform: translateY(-2px);
+    transform: translateY(-3px);
+    box-shadow: var(--shadow-md);
     border-color: var(--text-muted);
   }
 
   .type-card.active {
-    border-color: var(--color-primary);
-    background: var(--bg-hover);
+    border-color: var(--color-accent);
+    background: var(--color-accent-subtle);
     box-shadow: var(--shadow-glow);
   }
 
   .type-icon-wrapper {
     background-color: var(--bg-input);
-    padding: 0.75rem;
+    padding: var(--space-3);
     border-radius: var(--border-radius-md);
     display: flex;
     align-items: center;
     justify-content: center;
+    transition: all var(--duration-fast) var(--ease-spring);
   }
 
-  .facture-icon { color: var(--color-primary); }
+  .type-card.active .type-icon-wrapper {
+    background: var(--color-accent-subtle);
+    color: var(--color-accent);
+  }
+
+  .facture-icon { color: var(--color-accent); }
   .proforma-icon { color: var(--color-warning); }
   .livraison-icon { color: var(--color-info); }
 
   .type-meta h3 {
     font-size: 1rem;
+    font-family: var(--font-display);
     font-weight: 600;
     margin-bottom: 0.15rem;
+    color: var(--text-primary);
   }
 
   .type-meta p {
-    font-size: 0.8rem;
+    font-size: var(--text-xs);
     color: var(--text-secondary);
   }
 
-  /* Form Sections */
+  /* ===================================================
+     FORM SECTIONS
+     =================================================== */
   .form-section {
     display: flex;
     flex-direction: column;
-    gap: 1.25rem;
+    gap: var(--space-5);
+    padding: var(--space-6);
   }
 
   .section-title {
@@ -728,15 +1060,18 @@
     font-family: var(--font-display);
     color: var(--text-primary);
     font-weight: 600;
-    border-bottom: 1px solid var(--border-color);
-    padding-bottom: 0.75rem;
-    margin-bottom: 0.25rem;
+    border-left: 3px solid var(--color-accent);
+    padding-left: var(--space-3);
+    margin-bottom: var(--space-1);
   }
 
+  /* ===================================================
+     METADATA & CLIENT GRIDS
+     =================================================== */
   .metadata-grid {
     display: grid;
     grid-template-columns: repeat(4, 1fr);
-    gap: 1rem;
+    gap: var(--space-4);
   }
 
   @media (max-width: 900px) {
@@ -760,7 +1095,7 @@
   .client-grid {
     display: grid;
     grid-template-columns: 1.5fr 1fr;
-    gap: 1rem;
+    gap: var(--space-4);
   }
 
   .client-address-group {
@@ -776,7 +1111,9 @@
     }
   }
 
-  /* Autocomplete Dropdown list */
+  /* ===================================================
+     AUTOCOMPLETE DROPDOWNS (glass-panel)
+     =================================================== */
   .relative {
     position: relative;
   }
@@ -786,7 +1123,9 @@
     top: 100%;
     left: 0;
     right: 0;
-    background-color: var(--bg-card);
+    background: oklch(0.18 0.015 250 / 0.95);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
     border: 1px solid var(--border-color);
     border-radius: var(--border-radius-md);
     box-shadow: var(--shadow-lg);
@@ -794,15 +1133,15 @@
     max-height: 200px;
     overflow-y: auto;
     list-style: none;
-    margin-top: 0.25rem;
+    margin-top: var(--space-1);
   }
 
   .dropdown-item {
-    padding: 0.75rem 1rem;
+    padding: var(--space-3) var(--space-4);
     cursor: pointer;
     display: flex;
     align-items: center;
-    gap: 0.75rem;
+    gap: var(--space-3);
     transition: background-color var(--transition-fast);
   }
 
@@ -811,13 +1150,13 @@
   }
 
   .client-code-tag {
-    background-color: var(--bg-input);
-    color: var(--color-primary);
-    font-size: 0.75rem;
+    background: var(--color-accent-subtle);
+    color: var(--color-accent);
+    font-size: var(--text-xs);
     font-weight: bold;
     padding: 0.2rem 0.5rem;
     border-radius: var(--border-radius-sm);
-    border: 1px solid var(--border-color);
+    border: none;
   }
 
   .client-name-text {
@@ -825,32 +1164,42 @@
     color: var(--text-primary);
   }
 
-  /* Table Items */
+  /* ===================================================
+     LINE ITEMS TABLE
+     =================================================== */
   .items-section {
-    padding-bottom: 1rem;
+    padding-bottom: var(--space-4);
+    position: relative;
+    z-index: 2;
   }
 
   .items-header {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    margin-bottom: 0.5rem;
+    margin-bottom: var(--space-2);
   }
 
   .items-header .section-title {
-    border-bottom: none;
-    padding-bottom: 0;
+    border-left: 3px solid var(--color-accent);
+    padding-left: var(--space-3);
     margin-bottom: 0;
   }
 
   .btn-sm {
     padding: 0.4rem 0.8rem;
-    font-size: 0.85rem;
+    font-size: var(--text-sm);
   }
 
   .table-responsive {
-    overflow-x: auto;
-    margin-top: 0.5rem;
+    overflow-x: visible;
+    margin-top: var(--space-2);
+  }
+
+  @media (max-width: 768px) {
+    .table-responsive {
+      overflow-x: auto;
+    }
   }
 
   .items-table {
@@ -861,29 +1210,45 @@
 
   .items-table th {
     font-family: var(--font-display);
-    font-size: 0.85rem;
+    font-size: var(--text-sm);
     font-weight: 600;
-    color: var(--text-secondary);
-    padding: 0.75rem 0.5rem;
+    color: var(--text-muted);
+    padding: var(--space-3) var(--space-2);
     border-bottom: 2px solid var(--border-color);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
   }
 
   .items-table td {
-    padding: 0.5rem;
+    padding: var(--space-2);
     border-bottom: 1px solid var(--border-color);
     vertical-align: middle;
+  }
+
+  .item-row {
+    transition: background-color var(--transition-fast);
+  }
+
+  .item-row:hover {
+    background-color: oklch(0.2 0.015 250 / 0.5);
   }
 
   .row-num-cell {
     text-align: center;
     color: var(--text-muted);
-    font-weight: 600;
+    font-family: var(--font-display);
+    font-weight: 700;
   }
 
   .table-input {
-    padding: 0.5rem 0.75rem;
-    font-size: 0.9rem;
+    padding: var(--space-2) var(--space-3);
+    font-size: var(--text-sm);
     border-radius: var(--border-radius-sm);
+    transition: box-shadow var(--transition-fast), border-color var(--transition-fast);
+  }
+
+  .table-input:focus {
+    box-shadow: 0 0 0 2px var(--color-accent-glow);
   }
 
   .text-center { text-align: center; }
@@ -893,7 +1258,8 @@
     font-family: var(--font-display);
     font-weight: 600;
     font-size: 0.95rem;
-    padding-right: 1rem !important;
+    padding-right: var(--space-4) !important;
+    color: var(--text-primary);
   }
 
   .delete-row-btn {
@@ -901,18 +1267,20 @@
     border: none;
     color: var(--text-muted);
     cursor: pointer;
-    transition: color var(--transition-fast);
-    padding: 0.5rem;
+    transition: color var(--transition-fast), transform var(--duration-fast) var(--ease-spring);
+    padding: var(--space-2);
     display: inline-flex;
     align-items: center;
     justify-content: center;
+    border-radius: var(--border-radius-sm);
   }
 
   .delete-row-btn:hover {
     color: var(--color-danger);
+    transform: scale(1.15);
   }
 
-  /* Product Dropdown specific styling */
+  /* Product dropdown specific */
   .product-dropdown {
     max-height: 185px;
   }
@@ -930,24 +1298,29 @@
   }
 
   .prod-desc-lbl {
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
     color: var(--text-muted);
     margin-top: 0.15rem;
   }
 
   .prod-price-lbl {
     font-family: var(--font-display);
-    font-size: 0.85rem;
+    font-size: var(--text-sm);
     font-weight: bold;
-    color: var(--color-primary);
+    color: var(--color-accent);
   }
 
-  /* Calculation block */
+  /* ===================================================
+     CALCULATION BLOCK
+     =================================================== */
   .calculation-layout {
     display: grid;
     grid-template-columns: 1.5fr 1fr;
-    gap: 2rem;
+    gap: var(--space-8);
     align-items: start;
+    padding: var(--space-6);
+    position: relative;
+    z-index: 1;
   }
 
   @media (max-width: 768px) {
@@ -957,9 +1330,9 @@
   }
 
   .spelling-block {
-    background-color: var(--bg-input);
-    border: 1px solid var(--border-color);
-    padding: 1.25rem;
+    background: var(--color-accent-subtle);
+    border: 1px solid oklch(0.35 0.06 192 / 0.3);
+    padding: var(--space-5);
     border-radius: var(--border-radius-md);
     height: 100%;
     display: flex;
@@ -969,12 +1342,12 @@
 
   .spelling-title {
     font-family: var(--font-display);
-    font-size: 0.8rem;
+    font-size: var(--text-xs);
     font-weight: bold;
     color: var(--text-muted);
     text-transform: uppercase;
     letter-spacing: 0.05em;
-    margin-bottom: 0.5rem;
+    margin-bottom: var(--space-2);
   }
 
   .spelling-content {
@@ -988,7 +1361,7 @@
   .totals-block {
     display: flex;
     flex-direction: column;
-    gap: 0.85rem;
+    gap: var(--space-3);
   }
 
   .total-row {
@@ -1011,13 +1384,13 @@
 
   .border-row {
     border-bottom: 1px solid var(--border-color);
-    padding-bottom: 0.85rem;
+    padding-bottom: var(--space-3);
   }
 
   .tva-label-toggle {
     display: inline-flex;
     align-items: center;
-    gap: 0.5rem;
+    gap: var(--space-2);
     cursor: pointer;
     font-size: 0.95rem;
     color: var(--text-secondary);
@@ -1029,35 +1402,57 @@
   }
 
   .ttc-row {
-    margin-top: 0.25rem;
+    margin-top: var(--space-1);
+    padding-top: var(--space-2);
   }
 
   .ttc-row .lbl {
     font-family: var(--font-display);
-    font-size: 1.15rem;
+    font-size: var(--text-xl);
     font-weight: bold;
     color: var(--text-primary);
   }
 
   .ttc-row .val {
     font-family: var(--font-display);
-    font-size: 1.35rem;
+    font-size: var(--text-2xl);
     font-weight: 800;
-    color: var(--color-primary);
-    text-shadow: 0 0 15px var(--color-primary-glow);
+    color: var(--color-accent);
+    text-shadow: 0 0 20px var(--color-accent-glow);
   }
 
-  /* Form actions */
+  /* ===================================================
+     FORM ACTIONS (submit / cancel)
+     =================================================== */
   .form-actions {
     display: flex;
     justify-content: flex-end;
     align-items: center;
-    gap: 1rem;
-    margin-top: 1rem;
+    gap: var(--space-4);
+    margin-top: var(--space-4);
+    animation: fadeInUp 0.5s var(--ease-spring) both;
+    animation-delay: 440ms;
   }
 
   .form-actions .btn {
-    padding-left: 2rem;
-    padding-right: 2rem;
+    padding: var(--space-3) var(--space-8);
   }
+
+  .form-actions .btn-primary:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 16px var(--color-accent-glow);
+  }
+
+  /* ===================================================
+     NOTES TEXTAREA (livraison only)
+     =================================================== */
+  .notes-textarea {
+    width: 100%;
+    resize: vertical;
+    min-height: 70px;
+    font-family: var(--font-body);
+    font-size: var(--text-sm);
+    line-height: 1.6;
+  }
+
 </style>

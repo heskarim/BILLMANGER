@@ -6,10 +6,15 @@
     PlusCircle, 
     Settings, 
     Receipt, 
-    TrendingUp 
+    TrendingUp,
+    Zap,
+    Menu,
+    ChevronLeft
   } from '@lucide/svelte';
 
   let { children } = $props();
+
+  let sidebarCollapsed = $state(false);
 
   // Helper to determine if a route is currently active
   function isActive(path: string): boolean {
@@ -24,43 +29,71 @@
   <title>Cloud Pi - Billing Management</title>
 </svelte:head>
 
-<div class="app-container">
+<div class="app-container" class:sidebar-collapsed={sidebarCollapsed}>
   <!-- Sidebar Navigation Panel (Hidden during Print) -->
   <aside class="sidebar no-print">
+    <!-- Brand -->
     <div class="sidebar-brand">
-      <div class="brand-logo">
-        <Receipt size={24} color="var(--color-primary)" />
+      <div class="brand-icon">
+        <Zap size={20} />
       </div>
       <div class="brand-text">
-        <h2>Cloud Pi</h2>
-        <span>Billing System</span>
+        <h2>TECH IP</h2>
+        <span>Billing</span>
       </div>
     </div>
 
+    <!-- Navigation -->
     <nav class="sidebar-nav">
+      <span class="nav-section-label">Main</span>
+      
       <a href="/" class="nav-item" class:active={isActive('/')}>
-        <LayoutDashboard size={20} />
+        <span class="nav-icon-wrap">
+          <LayoutDashboard size={18} />
+        </span>
         <span>Dashboard</span>
       </a>
       
       <a href="/bills/new" class="nav-item" class:active={isActive('/bills/new')}>
-        <PlusCircle size={20} />
+        <span class="nav-icon-wrap">
+          <PlusCircle size={18} />
+        </span>
         <span>Create Bill</span>
       </a>
+
+      <span class="nav-section-label">System</span>
       
       <a href="/settings" class="nav-item" class:active={isActive('/settings')}>
-        <Settings size={20} />
+        <span class="nav-icon-wrap">
+          <Settings size={18} />
+        </span>
         <span>Settings</span>
       </a>
     </nav>
 
+    <!-- Footer -->
     <div class="sidebar-footer">
       <div class="status-indicator">
-        <span class="dot online"></span>
-        <span>Local Database Connected</span>
+        <span class="status-dot"></span>
+        <span>Database Connected</span>
       </div>
+      <span class="version-badge">v0.1.0</span>
     </div>
   </aside>
+
+  <!-- Sidebar Toggle Trigger when collapsed (floating) or inside layout -->
+  <button 
+    class="sidebar-toggle-btn no-print" 
+    class:collapsed={sidebarCollapsed}
+    onclick={() => sidebarCollapsed = !sidebarCollapsed}
+    aria-label="Toggle Navigation Sidebar"
+  >
+    {#if sidebarCollapsed}
+      <Menu size={18} />
+    {:else}
+      <ChevronLeft size={18} />
+    {/if}
+  </button>
 
   <!-- Main Content Area -->
   <main class="main-content">
@@ -69,71 +102,119 @@
 </div>
 
 <style>
-  /* Sidebar Styles */
+  /* ============================================================
+     SIDEBAR
+     ============================================================ */
   .sidebar {
-    width: 260px;
-    background-color: var(--bg-sidebar);
-    border-right: 1px solid var(--border-color);
+    width: 250px;
+    background: oklch(0.145 0.016 250 / 0.85);
+    backdrop-filter: blur(20px) saturate(1.2);
+    -webkit-backdrop-filter: blur(20px) saturate(1.2);
+    border-right: 1px solid oklch(0.28 0.012 250 / 0.5);
     display: flex;
     flex-direction: column;
-    padding: 1.5rem;
+    padding: var(--space-6) var(--space-5);
     position: sticky;
     top: 0;
     height: 100vh;
     flex-shrink: 0;
-    transition: transform var(--transition-normal);
+    transition: transform var(--duration-normal) var(--ease-spring),
+                width var(--duration-normal) var(--ease-spring),
+                margin-left var(--duration-normal) var(--ease-spring),
+                padding var(--duration-normal) var(--ease-spring),
+                opacity var(--duration-normal) var(--ease-spring),
+                border-color var(--duration-normal) var(--ease-spring);
   }
 
+  /* Collapsed Sidebar overrides */
+  .app-container.sidebar-collapsed .sidebar {
+    transform: translateX(-100%);
+    margin-left: -250px;
+    border-right-color: transparent;
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  /* ---- Brand ---- */
   .sidebar-brand {
     display: flex;
     align-items: center;
-    gap: 0.75rem;
-    margin-bottom: 2.5rem;
-    padding-bottom: 1rem;
-    border-bottom: 1px solid var(--border-color);
+    gap: var(--space-3);
+    margin-bottom: var(--space-8);
+    padding: 0 var(--space-2);
   }
 
-  .brand-logo {
-    background: var(--bg-input);
-    padding: 0.5rem;
+  .brand-icon {
+    width: 38px;
+    height: 38px;
     border-radius: var(--border-radius-md);
-    border: 1px solid var(--border-color);
+    background: linear-gradient(135deg, var(--color-accent), oklch(0.68 0.14 230));
     display: flex;
     align-items: center;
     justify-content: center;
+    color: oklch(0.13 0.015 250);
+    box-shadow: 0 4px 12px var(--color-accent-glow);
+    flex-shrink: 0;
   }
 
   .brand-text h2 {
-    font-size: 1.25rem;
-    font-weight: 700;
-    letter-spacing: -0.025em;
+    font-family: var(--font-display);
+    font-size: var(--text-lg);
+    font-weight: 800;
+    letter-spacing: -0.03em;
+    line-height: 1;
   }
 
   .brand-text span {
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
     color: var(--text-muted);
     font-weight: 500;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
   }
 
+  /* ---- Navigation ---- */
   .sidebar-nav {
     display: flex;
     flex-direction: column;
-    gap: 0.5rem;
+    gap: var(--space-1);
     flex: 1;
+  }
+
+  .nav-section-label {
+    font-family: var(--font-display);
+    font-size: 0.6875rem;
+    font-weight: 700;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    padding: var(--space-4) var(--space-3) var(--space-2);
   }
 
   .nav-item {
     display: flex;
     align-items: center;
-    gap: 0.85rem;
-    padding: 0.8rem 1rem;
+    gap: var(--space-3);
+    padding: var(--space-3) var(--space-3);
     color: var(--text-secondary);
     border-radius: var(--border-radius-md);
     font-family: var(--font-display);
     font-weight: 500;
-    font-size: 0.95rem;
-    transition: all var(--transition-fast);
+    font-size: var(--text-base);
+    transition: all var(--duration-normal) var(--ease-spring);
     position: relative;
+    text-decoration: none;
+  }
+
+  .nav-icon-wrap {
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: var(--border-radius-sm);
+    transition: all var(--duration-normal) var(--ease-spring);
+    flex-shrink: 0;
   }
 
   .nav-item:hover {
@@ -141,45 +222,103 @@
     background-color: var(--bg-hover);
   }
 
+  .nav-item:hover .nav-icon-wrap {
+    background: oklch(0.28 0.015 250 / 0.5);
+  }
+
   .nav-item.active {
     color: var(--text-primary);
-    background-color: var(--bg-card);
-    border: 1px solid var(--border-color);
-    box-shadow: var(--shadow-sm);
+    background: oklch(0.22 0.02 250 / 0.7);
+  }
+
+  .nav-item.active .nav-icon-wrap {
+    background: var(--color-accent-subtle);
+    color: var(--color-accent);
   }
 
   .nav-item.active::before {
     content: '';
     position: absolute;
-    left: 0;
-    top: 25%;
-    height: 50%;
+    left: -4px;
+    top: 20%;
+    height: 60%;
     width: 3px;
-    background-color: var(--color-primary);
-    border-radius: 0 4px 4px 0;
+    background: var(--color-accent);
+    border-radius: 0 var(--border-radius-pill) var(--border-radius-pill) 0;
+    box-shadow: 0 0 8px var(--color-accent-glow);
+    animation: fadeInUp 0.3s var(--ease-spring) both;
   }
 
+  /* ---- Footer ---- */
   .sidebar-footer {
-    padding-top: 1rem;
+    padding-top: var(--space-4);
     border-top: 1px solid var(--border-color);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-2);
   }
 
   .status-indicator {
     display: flex;
     align-items: center;
-    gap: 0.5rem;
-    font-size: 0.8rem;
+    gap: var(--space-2);
+    font-size: var(--text-xs);
     color: var(--text-muted);
   }
 
-  .dot {
-    width: 8px;
-    height: 8px;
+  .status-dot {
+    width: 7px;
+    height: 7px;
     border-radius: 50%;
+    background-color: var(--color-success);
+    animation: pulseRing 2.5s ease-in-out infinite;
+    flex-shrink: 0;
   }
 
-  .dot.online {
-    background-color: var(--color-success);
-    box-shadow: 0 0 8px var(--color-success);
+  .version-badge {
+    font-size: 0.6875rem;
+    color: var(--text-muted);
+    background: var(--bg-input);
+    border: 1px solid var(--border-color);
+    padding: 2px 8px;
+    border-radius: var(--border-radius-pill);
+    font-family: var(--font-body);
+    font-weight: 500;
+  }
+
+  /* ============================================================
+     SIDEBAR TOGGLE BUTTON
+     ============================================================ */
+  .sidebar-toggle-btn {
+    position: fixed;
+    left: 270px;
+    top: 25px;
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    background: oklch(0.18 0.015 250 / 0.85);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid var(--border-color);
+    color: var(--text-primary);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    z-index: 1000;
+    transition: all var(--duration-normal) var(--ease-spring);
+    box-shadow: var(--shadow-md);
+  }
+
+  .sidebar-toggle-btn:hover {
+    transform: scale(1.08);
+    border-color: var(--color-accent);
+    color: var(--color-accent);
+    box-shadow: 0 0 12px var(--color-accent-glow);
+  }
+
+  .sidebar-toggle-btn.collapsed {
+    left: 20px;
   }
 </style>

@@ -52,6 +52,7 @@ export interface Bill {
   montant_ht: number;
   montant_ttc: number;
   amount_in_words: string;
+  notes?: string;
   created_at?: string;
 }
 
@@ -123,9 +124,17 @@ export function initDb() {
       montant_ht REAL NOT NULL,
       montant_ttc REAL NOT NULL,
       amount_in_words TEXT NOT NULL,
+      notes TEXT,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )
   `);
+
+  // Migration: add notes column if it doesn't exist (safe on existing DBs)
+  try {
+    db.exec('ALTER TABLE bills ADD COLUMN notes TEXT');
+  } catch {
+    // Column already exists — ignore
+  }
 
   // 5. Bill Items Table
   db.exec(`
@@ -141,12 +150,12 @@ export function initDb() {
     )
   `);
 
-  // Seed default company settings (Cloud Pi profile from template) if empty
+  // Seed default company settings (TECH IP profile from template) if empty
   const settingsCount = db.prepare('SELECT COUNT(*) as count FROM settings').get() as { count: number };
   if (settingsCount.count === 0) {
     db.prepare(`
       INSERT INTO settings (id, company_name, address, phone, email, rc, art, nif, nis, rib)
-      VALUES (1, 'Cloud Pi', 'Cite 70 Logts FNPOS Bloc 5 L61, Sidi Amar, ANNABA, 23005', '(+213) 5 52 06 78 07', 'cloud.pi.dz@gmail.com', '18A1871316-01/23', '23112905611', '15436140176011402301', '195436140176035', '001 00811 0300001342/91 BNA-811 ABAINIA Mohamed Lakhdar')
+      VALUES (1, 'TECH IP', 'Lotissement souffey N 01 Khemis Miliana', '(+213) 699847473', 'ghebache05110@gmail.com', '44/00-3875390.A.26', '', '15802060020146504400', '795802060020144', '00300281000156530079 BADR Agence khemis-miliana *281* GHEBACHE ABDELKADER')
     `).run();
   }
 
@@ -154,13 +163,11 @@ export function initDb() {
   const productsCount = db.prepare('SELECT COUNT(*) as count FROM products').get() as { count: number };
   if (productsCount.count === 0) {
     const productsSeed = [
+      { name: 'pointeuse faciale', description: 'pointeuse faciale de marque', unit: 'UN', price: 160000 },
+      { name: 'coffret de pointeuse', description: 'coffret de pointeuse de protection', unit: 'UN', price: 19000 },
       { name: 'pHmètre', description: 'pHmètre de laboratoire portatif', unit: 'UN', price: 200000 },
       { name: 'Conductivimètre', description: 'Conductivimètre de table professionnel', unit: 'UN', price: 280000 },
-      { name: 'Dessiccateur en verre', description: 'Dessiccateur en verre avec Robinet Livré complet avec couvercle à robinet et disque perforé. Diamètre 300 mm.', unit: 'UN', price: 120000 },
-      { name: 'Superplastifiant MEDAFLOW 30', description: 'Superplastifiant haut réducteur d’eau de la troisième génération.', unit: 'UN', price: 8000 },
-      { name: 'Acide Chlorhydrique 2.5%', description: 'Solution d’eau distillée contenant 2,5% d’acide Chlorhydrique (Hcl).', unit: 'UN', price: 30000 },
-      { name: 'Agitateur magnétique 2L', description: 'Agitateur magnétique 2L réglable.', unit: 'UN', price: 90000 },
-      { name: 'Boites de pétri 90mm', description: 'Boites de pétri en plastique diamètre 90 mm', unit: 'UN', price: 100 }
+      { name: 'Dessiccateur en verre', description: 'Dessiccateur en verre avec Robinet. Diamètre 300 mm.', unit: 'UN', price: 120000 }
     ];
 
     const insertProduct = db.prepare(`
@@ -179,7 +186,7 @@ export function initDb() {
   if (clientsCount.count === 0) {
     db.prepare(`
       INSERT INTO clients (code, name, address)
-      VALUES ('C001', 'Faculté des sciences et de technologie', 'Faculté Tamenrasset, Tamenrasset, 10000, Algérie')
+      VALUES ('C001', 'Faculté des sciences et de technologie', 'Université de Tamenrasset, Tamenrasset, 10000, Algérie')
     `).run();
   }
 }
@@ -227,27 +234,28 @@ export function searchClients(query: string): Client[] {
 }
 
 export function createClient(client: Omit<Client, 'id'>): { id: number } {
-  const info = db.prepare(`
-    INSERT INTO clients (code, name, address)
-    VALUES (@code, @name, @address)
-    ON CONFLICT(code) DO UPDATE SET
-      name = excluded.name,
-      address = excluded.address
-  `).run(client);
-  
-  if (info.changes === 0) {
-    // If conflict, return existing
-    const existing = db.prepare('SELECT id FROM clients WHERE code = ?').get(client.code) as { id: number };
+  const existing = db.prepare('SELECT id FROM clients WHERE code = ?').get(client.code) as { id: number } | undefined;
+  if (existing) {
+    db.prepare(`
+      UPDATE clients
+      SET name = @name, address = @address
+      WHERE id = @id
+    `).run({ ...client, id: existing.id });
     return existing;
+  } else {
+    const info = db.prepare(`
+      INSERT INTO clients (code, name, address)
+      VALUES (@code, @name, @address)
+    `).run(client);
+    return { id: info.lastInsertRowid as number };
   }
-  return { id: info.lastInsertRowid as number };
 }
 
 export function updateClient(id: number, client: Omit<Client, 'id'>) {
   return db.prepare(`
     UPDATE clients
     SET code = @code, name = @name, address = @address
-    WHERE id = ?
+    WHERE id = @id
   `).run({ ...client, id });
 }
 
@@ -273,27 +281,30 @@ export function searchProducts(query: string): Product[] {
 }
 
 export function createProduct(product: Omit<Product, 'id'>): { id: number } {
-  const info = db.prepare(`
-    INSERT INTO products (name, description, unit, default_price)
-    VALUES (@name, @description, @unit, @default_price)
-    ON CONFLICT(name) DO UPDATE SET
-      description = COALESCE(excluded.description, description),
-      unit = COALESCE(excluded.unit, unit),
-      default_price = excluded.default_price
-  `).run(product);
-  
-  if (info.changes === 0) {
-    const existing = db.prepare('SELECT id FROM products WHERE name = ?').get(product.name) as { id: number };
+  const existing = db.prepare('SELECT id FROM products WHERE name = ?').get(product.name) as { id: number } | undefined;
+  if (existing) {
+    db.prepare(`
+      UPDATE products
+      SET description = COALESCE(@description, description),
+          unit = COALESCE(@unit, unit),
+          default_price = @default_price
+      WHERE id = @id
+    `).run({ ...product, id: existing.id });
     return existing;
+  } else {
+    const info = db.prepare(`
+      INSERT INTO products (name, description, unit, default_price)
+      VALUES (@name, @description, @unit, @default_price)
+    `).run(product);
+    return { id: info.lastInsertRowid as number };
   }
-  return { id: info.lastInsertRowid as number };
 }
 
 export function updateProduct(id: number, product: Omit<Product, 'id'>) {
   return db.prepare(`
     UPDATE products
     SET name = @name, description = @description, unit = @unit, default_price = @default_price
-    WHERE id = ?
+    WHERE id = @id
   `).run({ ...product, id });
 }
 
@@ -344,12 +355,12 @@ export function getNextBillNumber(type: 'facture' | 'proforma' | 'livraison'): s
   const prefix = type === 'facture' ? 'F' : type === 'proforma' ? 'P' : 'BL';
   const year = new Date().getFullYear();
   
-  // Find the highest number for this year and type
+  // Find the highest number for this year across ALL types
   const row = db.prepare(`
     SELECT bill_number FROM bills
-    WHERE type = ? AND bill_number LIKE ?
+    WHERE bill_number LIKE ?
     ORDER BY id DESC LIMIT 1
-  `).get(type, `${year}-%`) as { bill_number: string } | undefined;
+  `).get(`${year}-%`) as { bill_number: string } | undefined;
   
   if (row) {
     // Expected format: "2025-0009"
@@ -373,11 +384,11 @@ export function createBill(
     INSERT INTO bills (
       bill_number, type, date, contract_number, contract_date, client_id,
       client_name_snapshot, client_address_snapshot, client_code_snapshot,
-      tva_rate, montant_ht, montant_ttc, amount_in_words
+      tva_rate, montant_ht, montant_ttc, amount_in_words, notes
     ) VALUES (
       @bill_number, @type, @date, @contract_number, @contract_date, @client_id,
       @client_name_snapshot, @client_address_snapshot, @client_code_snapshot,
-      @tva_rate, @montant_ht, @montant_ttc, @amount_in_words
+      @tva_rate, @montant_ht, @montant_ttc, @amount_in_words, @notes
     )
   `);
 
@@ -452,8 +463,9 @@ export function updateBill(
         tva_rate = @tva_rate,
         montant_ht = @montant_ht,
         montant_ttc = @montant_ttc,
-        amount_in_words = @amount_in_words
-    WHERE id = ?
+        amount_in_words = @amount_in_words,
+        notes = @notes
+    WHERE id = @id
   `);
 
   const deleteItemsStmt = db.prepare('DELETE FROM bill_items WHERE bill_id = ?');
