@@ -849,7 +849,7 @@
     top: var(--space-6);
     height: calc(100vh - 120px);
     overflow-y: auto;
-    background: oklch(0.16 0.015 250);
+    background: var(--bg-app);
     border: 1px solid var(--border-color);
     border-radius: var(--border-radius-lg);
     padding: var(--space-6) var(--space-4);
@@ -1142,10 +1142,10 @@
     top: 100%;
     left: 0;
     right: 0;
-    background-color: oklch(0.22 0.02 250 / 0.92);
+    background-color: var(--bg-elevated);
     backdrop-filter: blur(16px);
     -webkit-backdrop-filter: blur(16px);
-    border: 1px solid oklch(1 0 0 / 0.08);
+    border: 1px solid var(--border-color);
     border-radius: var(--border-radius-md);
     box-shadow: var(--shadow-lg);
     z-index: 100;

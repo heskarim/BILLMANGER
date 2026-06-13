@@ -71,7 +71,7 @@
   let focusedRowIndex = $state<number | null>(null);
 
   // TVA controls
-  let hasTva = $state(false); // Exempted by default in Cloud Pi template
+  let hasTva = $state(true); // Apply TVA (19%) by default
   let tvaRate = $state(19);
 
   // Calculations
@@ -830,7 +830,7 @@
     top: var(--space-6);
     height: calc(100vh - 120px);
     overflow-y: auto;
-    background: oklch(0.16 0.015 250);
+    background: var(--bg-app);
     border: 1px solid var(--border-color);
     border-radius: var(--border-radius-lg);
     padding: var(--space-6) var(--space-4);
@@ -1123,7 +1123,7 @@
     top: 100%;
     left: 0;
     right: 0;
-    background: oklch(0.18 0.015 250 / 0.95);
+    background: var(--bg-elevated);
     backdrop-filter: blur(12px);
     -webkit-backdrop-filter: blur(12px);
     border: 1px solid var(--border-color);
@@ -1230,7 +1230,7 @@
   }
 
   .item-row:hover {
-    background-color: oklch(0.2 0.015 250 / 0.5);
+    background-color: var(--bg-hover);
   }
 
   .row-num-cell {
@@ -1331,7 +1331,7 @@
 
   .spelling-block {
     background: var(--color-accent-subtle);
-    border: 1px solid oklch(0.35 0.06 192 / 0.3);
+    border: 1px solid var(--color-accent-glow);
     padding: var(--space-5);
     border-radius: var(--border-radius-md);
     height: 100%;

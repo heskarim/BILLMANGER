@@ -150,12 +150,12 @@ export function initDb() {
     )
   `);
 
-  // Seed default company settings (placeholder profile) if empty
+  // Seed default company settings (real TECH IP profile) if empty
   const settingsCount = db.prepare('SELECT COUNT(*) as count FROM settings').get() as { count: number };
   if (settingsCount.count === 0) {
     db.prepare(`
       INSERT INTO settings (id, company_name, address, phone, email, rc, art, nif, nis, rib)
-      VALUES (1, 'NOM DE VOTRE ENTREPRISE', 'Adresse de votre entreprise', '(+213) 00 00 00 00', 'contact@votre-entreprise.com', '00/00-0000000.A.00', '00000000000', '00000000000000000000', '000000000000000', '00000000000000000000')
+      VALUES (1, 'TECH IP', 'Lotissement souffey N 01 Khemis Miliana', '(+213) 699847473', 'ghebache05110@gmail.com', '44/00-3875390.A.26', '', '15802060020146504400', '795802060020144', '00300281000156530079 BADR Agence khemis-miliana 281 GHEBACHE ABDELKADER')
     `).run();
   }
 

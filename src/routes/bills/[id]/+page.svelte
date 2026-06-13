@@ -1,14 +1,15 @@
 <script lang="ts">
   import { enhance } from '$app/forms';
-  import { 
-    Printer, 
-    Trash2, 
-    Copy, 
-    ArrowLeft, 
-    Edit, 
-    Receipt, 
-    FileText, 
-    Truck 
+  import {
+    Printer,
+    Trash2,
+    Copy,
+    ArrowLeft,
+    Edit,
+    Receipt,
+    FileText,
+    Truck,
+    FileSpreadsheet
   } from '@lucide/svelte';
 
   let { data } = $props();
@@ -90,6 +91,12 @@
     return { pageSum, runningSum };
   }
 
+  // Capitalize the first letter (display-only — saved email is untouched)
+  function capitalizeFirst(str: string | null | undefined): string {
+    if (!str) return '';
+    return str.charAt(0).toUpperCase() + str.slice(1);
+  }
+
   // Helper to format date
   function formatDate(dStr: string): string {
     if (!dStr) return '';
@@ -153,6 +160,11 @@
       <span>{printBundle.length > 1 ? 'Print Bundle' : 'Print / PDF'}</span>
     </button>
 
+    <a href="/api/bills/{bill.id}/export" class="btn btn-secondary export-btn" title="Export this bill as Excel">
+      <FileSpreadsheet size={16} />
+      <span>Export XLSX</span>
+    </a>
+
     <form method="POST" action="?/deleteBill" use:enhance
       onsubmit={(e) => {
         if (!confirm('Are you sure you want to permanently delete this billing document?')) {
@@ -196,7 +208,7 @@
                   {/if}
                   <p class="company-contact"><strong>Tél:</strong> {settings?.phone || '—'}</p>
                   {#if settings?.email}
-                    <p class="company-contact"><strong>Email:</strong> {settings.email}</p>
+                    <p class="company-contact"><strong>Email:</strong> {capitalizeFirst(settings.email)}</p>
                   {/if}
                 </div>
               </div>
@@ -236,9 +248,6 @@
                     <strong>Contrat:</strong> —
                   {/if}
                 </td>
-              </tr>
-              <tr>
-                <td colspan="2" class="client-section-th">Client</td>
               </tr>
               <tr>
                 <td><strong>Client:</strong> {bill.client_name_snapshot}</td>
@@ -370,6 +379,14 @@
                 </tbody>
               </table>
             </div>
+
+            <!-- Stamp & Signature area (Facture / Proforma) -->
+            <div class="stamp-block">
+              <div class="stamp-box">
+                <span class="stamp-label">Cachet &amp; Signature</span>
+                <div class="stamp-space"></div>
+              </div>
+            </div>
           {/if}
 
           <!-- Notes (Bon de Livraison only) -->
@@ -414,7 +431,7 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    background: oklch(0.18 0.015 250 / 0.8);
+    background: var(--bg-card);
     backdrop-filter: blur(16px);
     -webkit-backdrop-filter: blur(16px);
     border: 1px solid var(--border-color);
@@ -447,7 +464,7 @@
     display: flex;
     align-items: center;
     gap: var(--space-4);
-    background: oklch(0.22 0.015 250 / 0.5);
+    background: var(--bg-hover);
     border-radius: var(--border-radius-md);
     padding: var(--space-2) var(--space-4);
     border: 1px solid var(--border-color);
@@ -588,7 +605,8 @@
 
   .company-rib {
     font-size: 8px;
-    word-break: break-all;
+    word-break: normal;
+    overflow-wrap: break-word;
     margin-top: 2px;
   }
 
@@ -617,16 +635,6 @@
     font-weight: 800;
     font-size: 9.5px;
     letter-spacing: 0.03em;
-  }
-
-  .client-section-th {
-    background: #f0f0f5;
-    color: #1a1a2e;
-    font-weight: 700;
-    text-transform: uppercase;
-    font-size: 8px;
-    letter-spacing: 0.02em;
-    padding: 3px 8px !important;
   }
 
   /* ============================================================
@@ -694,7 +702,6 @@
      TABLE STYLES
      ============================================================ */
   .table-container {
-    flex: 1;
     margin-bottom: 12px;
   }
 
@@ -835,6 +842,39 @@
     color: #444;
     font-size: 9px;
     white-space: pre-wrap;
+  }
+
+  /* ============================================================
+     STAMP & SIGNATURE (Facture / Proforma)
+     ============================================================ */
+  .stamp-block {
+    display: flex;
+    justify-content: flex-end;
+    margin-top: 16px;
+    padding: 0 8px;
+  }
+
+  .stamp-box {
+    width: 45%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .stamp-label {
+    font-size: 9px;
+    font-weight: 700;
+    color: #1a1a2e;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+  }
+
+  .stamp-space {
+    width: 100%;
+    height: 70px;
+    border: 1px dashed #aaa;
+    border-radius: 3px;
   }
 
   /* ============================================================

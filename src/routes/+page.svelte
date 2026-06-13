@@ -1,11 +1,11 @@
 <script lang="ts">
   import { enhance } from '$app/forms';
-  import { 
-    LayoutDashboard, 
-    Receipt, 
-    FileText, 
-    Truck, 
-    TrendingUp, 
+  import {
+    LayoutDashboard,
+    Receipt,
+    FileText,
+    Truck,
+    TrendingUp,
     Search,
     Eye,
     Edit3,
@@ -13,7 +13,9 @@
     Trash2,
     Plus,
     X,
-    Filter
+    Filter,
+    FileSpreadsheet,
+    Download
   } from '@lucide/svelte';
 
   let { data } = $props();
@@ -68,10 +70,17 @@
       <p class="text-secondary">Track, search, and generate corporate billing documents.</p>
     </div>
     
-    <a href="/bills/new" class="btn btn-primary create-btn" id="create-document-btn">
-      <Plus size={18} />
-      <span>Create Document</span>
-    </a>
+    <div class="header-actions">
+      <a href="/api/bills/export" class="btn btn-secondary export-all-btn" title="Export all bills as Excel">
+        <FileSpreadsheet size={18} />
+        <span>Export All</span>
+      </a>
+
+      <a href="/bills/new" class="btn btn-primary create-btn" id="create-document-btn">
+        <Plus size={18} />
+        <span>Create Document</span>
+      </a>
+    </div>
   </header>
 
   <!-- 1. METRICS CARDS GRID -->
@@ -312,6 +321,17 @@
     flex-shrink: 0;
   }
 
+  .header-actions {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    flex-shrink: 0;
+  }
+
+  .export-all-btn {
+    padding: var(--space-3) var(--space-5);
+  }
+
   /* ---- Metrics Grid ---- */
   .metrics-grid {
     display: grid;
@@ -360,7 +380,7 @@
   .metric-card:hover {
     transform: translateY(-3px);
     box-shadow: var(--shadow-md);
-    border-color: oklch(0.35 0.02 250);
+    border-color: var(--text-muted);
   }
 
   .metric-icon-wrap {
@@ -578,7 +598,7 @@
 
   .logs-table td {
     padding: var(--space-4);
-    border-bottom: 1px solid oklch(0.22 0.01 250 / 0.5);
+    border-bottom: 1px solid var(--border-color);
     vertical-align: middle;
   }
 
@@ -588,7 +608,7 @@
   }
 
   .log-row:hover {
-    background-color: oklch(0.2 0.015 250 / 0.5);
+    background-color: var(--bg-hover);
   }
 
   .doc-num-cell {

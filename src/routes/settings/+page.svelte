@@ -429,7 +429,7 @@
   }
 
   .logo-uploader-card {
-    border: 2px dashed oklch(0.3 0.02 250);
+    border: 2px dashed var(--border-color);
     background-color: var(--bg-input);
     border-radius: var(--border-radius-lg);
     display: flex;

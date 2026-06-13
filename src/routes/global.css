@@ -94,6 +94,37 @@
 }
 
 /* ============================================================
+   LIGHT (WHITE) THEME — default
+   Activated via <html data-theme="light">. Only recolors the
+   app chrome (sidebar, dashboard, forms). The bill "paper"
+   stays white in both themes by design.
+   ============================================================ */
+:root[data-theme='light'] {
+  --bg-app: oklch(0.985 0.003 250);
+  --bg-sidebar: oklch(0.97 0.004 250);
+  --bg-card: oklch(1 0 0);
+  --bg-input: oklch(0.975 0.004 250);
+  --bg-hover: oklch(0.94 0.006 250);
+  --bg-elevated: oklch(0.99 0.003 250);
+
+  --text-primary: oklch(0.22 0.02 250);
+  --text-secondary: oklch(0.42 0.02 250);
+  --text-muted: oklch(0.58 0.018 250);
+
+  /* Accent — slightly deeper teal so it reads on white */
+  --color-accent: oklch(0.6 0.13 192);
+  --color-accent-hover: oklch(0.54 0.13 192);
+  --color-accent-subtle: oklch(0.6 0.13 192 / 0.1);
+  --color-accent-glow: oklch(0.6 0.13 192 / 0.18);
+
+  --border-color: oklch(0.9 0.006 250);
+
+  --shadow-sm: 0 1px 3px 0 oklch(0.5 0.02 250 / 0.1);
+  --shadow-md: 0 4px 12px -2px oklch(0.5 0.02 250 / 0.12), 0 2px 4px -1px oklch(0.5 0.02 250 / 0.06);
+  --shadow-lg: 0 12px 28px -4px oklch(0.5 0.02 250 / 0.16), 0 4px 8px -2px oklch(0.5 0.02 250 / 0.08);
+}
+
+/* ============================================================
    GLOBAL RESET & BASE
    ============================================================ */
 *, *::before, *::after {

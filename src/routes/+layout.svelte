@@ -1,20 +1,41 @@
 <script lang="ts">
   import { page } from '$app/stores';
   import './global.css';
-  import { 
-    LayoutDashboard, 
-    PlusCircle, 
-    Settings, 
-    Receipt, 
+  import {
+    LayoutDashboard,
+    PlusCircle,
+    Settings,
+    Receipt,
     TrendingUp,
     Zap,
     Menu,
-    ChevronLeft
+    ChevronLeft,
+    Sun,
+    Moon
   } from '@lucide/svelte';
 
   let { children } = $props();
 
   let sidebarCollapsed = $state(false);
+
+  // Theme: 'light' (white, default) or 'dark'. Initialised from the
+  // attribute that app.html already set before paint.
+  let theme = $state<'light' | 'dark'>('light');
+
+  $effect(() => {
+    const current = document.documentElement.getAttribute('data-theme');
+    theme = current === 'dark' ? 'dark' : 'light';
+  });
+
+  function toggleTheme() {
+    theme = theme === 'light' ? 'dark' : 'light';
+    document.documentElement.setAttribute('data-theme', theme);
+    try {
+      localStorage.setItem('theme', theme);
+    } catch (e) {
+      // localStorage unavailable — ignore, theme still applies for this session
+    }
+  }
 
   // Helper to determine if a route is currently active
   function isActive(path: string): boolean {
@@ -26,7 +47,7 @@
 </script>
 
 <svelte:head>
-  <title>Cloud Pi - Billing Management</title>
+  <title>TECH IP - Billing Management</title>
 </svelte:head>
 
 <div class="app-container" class:sidebar-collapsed={sidebarCollapsed}>
@@ -95,6 +116,20 @@
     {/if}
   </button>
 
+  <!-- Theme Toggle (floating, top-right corner) -->
+  <button
+    class="theme-toggle-btn no-print"
+    onclick={toggleTheme}
+    aria-label="Toggle light / dark theme"
+    title={theme === 'light' ? 'Switch to dark mode' : 'Switch to light mode'}
+  >
+    {#if theme === 'light'}
+      <Moon size={18} />
+    {:else}
+      <Sun size={18} />
+    {/if}
+  </button>
+
   <!-- Main Content Area -->
   <main class="main-content">
     {@render children()}
@@ -107,10 +142,10 @@
      ============================================================ */
   .sidebar {
     width: 250px;
-    background: oklch(0.145 0.016 250 / 0.85);
+    background: var(--bg-sidebar);
     backdrop-filter: blur(20px) saturate(1.2);
     -webkit-backdrop-filter: blur(20px) saturate(1.2);
-    border-right: 1px solid oklch(0.28 0.012 250 / 0.5);
+    border-right: 1px solid var(--border-color);
     display: flex;
     flex-direction: column;
     padding: var(--space-6) var(--space-5);
@@ -223,12 +258,12 @@
   }
 
   .nav-item:hover .nav-icon-wrap {
-    background: oklch(0.28 0.015 250 / 0.5);
+    background: var(--bg-hover);
   }
 
   .nav-item.active {
     color: var(--text-primary);
-    background: oklch(0.22 0.02 250 / 0.7);
+    background: var(--bg-hover);
   }
 
   .nav-item.active .nav-icon-wrap {
@@ -297,7 +332,7 @@
     width: 36px;
     height: 36px;
     border-radius: 50%;
-    background: oklch(0.18 0.015 250 / 0.85);
+    background: var(--bg-elevated);
     backdrop-filter: blur(12px);
     -webkit-backdrop-filter: blur(12px);
     border: 1px solid var(--border-color);
@@ -320,5 +355,36 @@
 
   .sidebar-toggle-btn.collapsed {
     left: 20px;
+  }
+
+  /* ============================================================
+     THEME TOGGLE BUTTON (top-right corner)
+     ============================================================ */
+  .theme-toggle-btn {
+    position: fixed;
+    right: 24px;
+    top: 25px;
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    background: var(--bg-elevated);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid var(--border-color);
+    color: var(--text-primary);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    z-index: 1000;
+    transition: all var(--duration-normal) var(--ease-spring);
+    box-shadow: var(--shadow-md);
+  }
+
+  .theme-toggle-btn:hover {
+    transform: scale(1.08);
+    border-color: var(--color-accent);
+    color: var(--color-accent);
+    box-shadow: 0 0 12px var(--color-accent-glow);
   }
 </style>
