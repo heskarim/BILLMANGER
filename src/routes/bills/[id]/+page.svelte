@@ -240,7 +240,7 @@
             </thead>
             <tbody>
               <tr>
-                <td style="width: 50%;"><strong>Date:</strong> {formatDate(bill.date) || '—'}</td>
+                <td style="width: 50%;"><strong>Date:</strong> {docType === 'facture' ? '' : (formatDate(bill.date) || '—')}</td>
                 <td style="width: 50%;">
                   {#if bill.contract_number}
                     <strong>Contrat N°:</strong> {bill.contract_number} {#if bill.contract_date}du {formatDate(bill.contract_date)}{/if}
@@ -397,19 +397,17 @@
             </div>
           {/if}
 
-          <!-- Signature/Stamp area — Bon de Livraison only -->
-          {#if docType === 'livraison'}
-            <div class="signature-block">
+          <!-- Signature/Stamp area — all document types -->
+          <div class="signature-block">
+            {#if docType === 'livraison'}
               <div class="signature-box">
                 <span>Accusé de réception (Client)</span>
-                <div class="signature-line"></div>
               </div>
-              <div class="signature-box">
-                <span>Signature &amp; Cachet (Fournisseur)</span>
-                <div class="signature-line"></div>
-              </div>
+            {/if}
+            <div class="signature-box" style={docType !== 'livraison' ? 'margin-left: auto;' : ''}>
+              <span>Signature &amp; Cachet (Fournisseur)</span>
             </div>
-          {/if}
+          </div>
         {/if}
 
       </div>
@@ -883,8 +881,9 @@
   .signature-block {
     display: flex;
     justify-content: space-between;
-    margin-top: 22px;
+    margin-top: auto;
     padding: 0 8px;
+    padding-top: 22px;
   }
 
   .signature-box {
@@ -895,12 +894,6 @@
     flex-direction: column;
     gap: 32px;
     color: #1a1a2e;
-  }
-
-  .signature-line {
-    border-bottom: 1px dashed #888;
-    width: 100%;
-    height: 1px;
   }
 
   /* ============================================================

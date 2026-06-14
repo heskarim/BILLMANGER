@@ -704,7 +704,7 @@
             </thead>
             <tbody>
               <tr>
-                <td style="border: 1px solid #1a1a2e; padding: 4px 6px; width: 50%;"><strong>Date:</strong> {date ? formatDate(date) : '—'}</td>
+                <td style="border: 1px solid #1a1a2e; padding: 4px 6px; width: 50%;"><strong>Date:</strong> {type === 'facture' ? '' : (date ? formatDate(date) : '—')}</td>
                 <td style="border: 1px solid #1a1a2e; padding: 4px 6px; width: 50%;">
                   {#if contractNumber}
                     <strong>Contrat N°:</strong> {contractNumber} {#if contractDate}du {formatDate(contractDate)}{/if}
@@ -799,11 +799,13 @@
                 <span style="color: #444; white-space: pre-wrap;">{notes}</span>
               </div>
             {/if}
-            <div style="display: flex; justify-content: space-between; margin-top: 18px; font-size: 8px; font-weight: 700;">
-              <div>Accusé de réception (Client)</div>
-              <div>Signature &amp; Cachet (Fournisseur)</div>
-            </div>
           {/if}
+          <div style="display: flex; justify-content: {type === 'livraison' ? 'space-between' : 'flex-end'}; margin-top: auto; padding-top: 18px; font-size: 8px; font-weight: 700;">
+            {#if type === 'livraison'}
+              <div>Accusé de réception (Client)</div>
+            {/if}
+            <div>Signature &amp; Cachet (Fournisseur)</div>
+          </div>
         </div>
       </div>
     </aside>
