@@ -380,15 +380,6 @@
               </table>
             </div>
 
-            <!-- Stamp & Signature area (Facture / Proforma) -->
-            <div class="stamp-block">
-              <div class="stamp-box">
-                <span class="stamp-label">Cachet &amp; Signature</span>
-                <div class="stamp-space"></div>
-              </div>
-            </div>
-          {/if}
-
           <!-- Notes (Bon de Livraison only) -->
           {#if docType === 'livraison' && bill.notes}
             <div class="notes-block">
@@ -397,18 +388,15 @@
             </div>
           {/if}
 
-          <!-- Signature/Stamp area — all document types -->
-          <div class="signature-block">
-            {#if docType === 'livraison'}
-              <div class="signature-box">
-                <span>Accusé de réception (Client)</span>
+          <!-- Signature/Stamp area — Facture / Proforma only -->
+          {#if docType !== 'livraison'}
+            <div class="signature-block">
+              <div class="signature-box" style="margin-left: auto; text-align: right;">
+                <span>Signature &amp; Cachet (Fournisseur)</span>
+                <div class="signature-space"></div>
               </div>
-            {/if}
-            <div class="signature-box" style={docType !== 'livraison' ? 'margin-left: auto;' : ''}>
-              <span>Signature &amp; Cachet (Fournisseur)</span>
             </div>
-          </div>
-        {/if}
+          {/if}
 
       </div>
 
@@ -843,40 +831,7 @@
   }
 
   /* ============================================================
-     STAMP & SIGNATURE (Facture / Proforma)
-     ============================================================ */
-  .stamp-block {
-    display: flex;
-    justify-content: flex-end;
-    margin-top: 16px;
-    padding: 0 8px;
-  }
-
-  .stamp-box {
-    width: 45%;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 6px;
-  }
-
-  .stamp-label {
-    font-size: 9px;
-    font-weight: 700;
-    color: #1a1a2e;
-    text-transform: uppercase;
-    letter-spacing: 0.03em;
-  }
-
-  .stamp-space {
-    width: 100%;
-    height: 70px;
-    border: 1px dashed #aaa;
-    border-radius: 3px;
-  }
-
-  /* ============================================================
-     SIGNATURES
+     STAMP & SIGNATURES (Facture / Proforma)
      ============================================================ */
   .signature-block {
     display: flex;
@@ -892,8 +847,12 @@
     font-weight: 700;
     display: flex;
     flex-direction: column;
-    gap: 32px;
+    gap: 8px;
     color: #1a1a2e;
+  }
+
+  .signature-space {
+    height: 75px;
   }
 
   /* ============================================================

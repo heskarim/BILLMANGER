@@ -800,12 +800,14 @@
               </div>
             {/if}
           {/if}
-          <div style="display: flex; justify-content: {type === 'livraison' ? 'space-between' : 'flex-end'}; margin-top: auto; padding-top: 18px; font-size: 8px; font-weight: 700;">
-            {#if type === 'livraison'}
-              <div>Accusé de réception (Client)</div>
-            {/if}
-            <div>Signature &amp; Cachet (Fournisseur)</div>
-          </div>
+          {#if type !== 'livraison'}
+            <div style="display: flex; justify-content: flex-end; margin-top: auto; padding-top: 18px; font-size: 8px; font-weight: 700;">
+              <div style="text-align: right;">
+                <div>Signature &amp; Cachet (Fournisseur)</div>
+                <div style="height: 50px;"></div>
+              </div>
+            </div>
+          {/if}
         </div>
       </div>
     </aside>
