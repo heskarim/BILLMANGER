@@ -37,10 +37,10 @@
   // PAGINATION CHUNKING LOGIC
   // ----------------------------------------------------
   function partitionItems(itemsList: typeof items, isLivraison: boolean) {
-    const page1MaxWithFooter = 9;
-    const page1MaxWithoutFooter = 15;
-    const otherPageMaxWithFooter = 20;
-    const otherPageMaxWithoutFooter = 28;
+    const page1MaxWithFooter = 30;
+    const page1MaxWithoutFooter = 30;
+    const otherPageMaxWithFooter = 32;
+    const otherPageMaxWithoutFooter = 40;
 
     if (itemsList.length <= page1MaxWithFooter) {
       return [itemsList];
@@ -379,6 +379,7 @@
                 </tbody>
               </table>
             </div>
+          {/if}
 
           <!-- Notes (Bon de Livraison only) -->
           {#if docType === 'livraison' && bill.notes}
