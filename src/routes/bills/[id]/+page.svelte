@@ -37,37 +37,16 @@
   // PAGINATION CHUNKING LOGIC
   // ----------------------------------------------------
   function partitionItems(itemsList: typeof items, isLivraison: boolean) {
-    const page1MaxWithFooter = 14;
-    const page1MaxWithoutFooter = 20;
-    const otherPageMaxWithFooter = 25;
-    const otherPageMaxWithoutFooter = 33;
+    // These capacities reserve room for the real header and final footer/signature
+    // instead of relying on the viewport or Excel-like automatic pagination.
+    const firstPageCapacity = isLivraison ? 16 : 11;
+    const continuationCapacity = isLivraison ? 23 : 18;
 
-    if (itemsList.length <= page1MaxWithFooter) {
-      return [itemsList];
-    }
+    if (itemsList.length <= firstPageCapacity) return [itemsList];
 
-    const pages = [];
-    if (itemsList.length <= page1MaxWithoutFooter) {
-      pages.push(itemsList.slice(0, page1MaxWithFooter));
-      pages.push(itemsList.slice(page1MaxWithFooter));
-      return pages;
-    }
-
-    pages.push(itemsList.slice(0, page1MaxWithoutFooter));
-    let idx = page1MaxWithoutFooter;
-
-    while (idx < itemsList.length) {
-      const remaining = itemsList.length - idx;
-      if (remaining <= otherPageMaxWithFooter) {
-        pages.push(itemsList.slice(idx));
-        idx = itemsList.length;
-      } else if (remaining <= otherPageMaxWithoutFooter) {
-        pages.push(itemsList.slice(idx, idx + otherPageMaxWithFooter));
-        idx += otherPageMaxWithFooter;
-      } else {
-        pages.push(itemsList.slice(idx, idx + otherPageMaxWithoutFooter));
-        idx += otherPageMaxWithoutFooter;
-      }
+    const pages = [itemsList.slice(0, firstPageCapacity)];
+    for (let index = firstPageCapacity; index < itemsList.length; index += continuationCapacity) {
+      pages.push(itemsList.slice(index, index + continuationCapacity));
     }
     return pages;
   }
@@ -186,7 +165,10 @@
     {@const currentPages = partitionItems(items, docType === 'livraison')}
     {#each currentPages as pageItems, pageIdx (pageIdx)}
       <!-- A4 Sheet wrapper -->
-      <div class="a4-page">
+      <div
+        class="a4-page"
+        class:last-page={pageIdx === currentPages.length - 1 && bundleIdx === printBundle.length - 1}
+      >
         
         <!-- PAGE HEADER: Repeated on Page 1, minimal on subsequent pages -->
         {#if pageIdx === 0}
@@ -908,31 +890,64 @@
      ============================================================ */
   @media print {
     @page {
+      size: A4 portrait;
       margin: 0;
     }
 
+    :global(html),
     :global(body) {
       background-color: white !important;
       margin: 0 !important;
+      padding: 0 !important;
+      overflow: visible !important;
       -webkit-print-color-adjust: exact !important;
       print-color-adjust: exact !important;
     }
 
+    :global(.app-container),
+    :global(.main-content) {
+      display: block !important;
+      min-height: 0 !important;
+      height: auto !important;
+      max-width: none !important;
+      margin: 0 !important;
+      padding: 0 !important;
+      overflow: visible !important;
+    }
+
+    .no-print,
     .actions-bar {
       display: none !important;
+    }
+
+    .print-container {
+      display: block !important;
+      width: 100% !important;
+      max-width: none !important;
+      margin: 0 !important;
+      padding: 0 !important;
     }
 
     .a4-page {
       box-shadow: none !important;
       border: none !important;
       border-radius: 0 !important;
-      margin: 0 auto !important;
+      margin: 0 !important;
       padding: 1.8cm 2cm !important;
-      width: 21cm !important;
-      height: 29.7cm !important;
+      width: 210mm !important;
+      min-height: 297mm !important;
+      height: 297mm !important;
       box-sizing: border-box !important;
-      page-break-after: always !important;
+      overflow: hidden !important;
       page-break-inside: avoid !important;
+      break-inside: avoid !important;
+      page-break-after: always !important;
+      break-after: page !important;
+    }
+
+    .a4-page.last-page {
+      page-break-after: auto !important;
+      break-after: auto !important;
     }
 
     .page-break {

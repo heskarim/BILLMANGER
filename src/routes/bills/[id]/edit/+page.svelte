@@ -470,7 +470,7 @@
 
     <!-- 4. DYNAMIC LINE ITEMS TABLE -->
     <div class="card form-section items-section animate-in" style="--i: 3">
-      <div class="items-header">
+      <div class="items-header items-header-sticky">
         <h3 class="section-title">Line Items</h3>
         <button type="button" class="btn btn-secondary btn-sm" onclick={addRow}>
           <Plus size={16} />
@@ -1207,6 +1207,19 @@
     margin-bottom: var(--space-2);
   }
 
+  .items-header-sticky {
+    position: sticky;
+    top: 0.75rem;
+    z-index: 20;
+    margin: calc(-1 * var(--space-5)) calc(-1 * var(--space-5)) var(--space-4);
+    padding: var(--space-3) var(--space-5);
+    background: color-mix(in srgb, var(--bg-card) 94%, transparent);
+    border-bottom: 1px solid var(--border-color);
+    border-radius: var(--border-radius-lg) var(--border-radius-lg) 0 0;
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+  }
+
   .items-header .section-title {
     border-bottom: none;
     padding-bottom: 0;
@@ -1226,6 +1239,18 @@
   @media (max-width: 768px) {
     .table-responsive {
       overflow-x: auto;
+    }
+
+    .items-header-sticky {
+      top: 0.5rem;
+      margin-left: calc(-1 * var(--space-3));
+      margin-right: calc(-1 * var(--space-3));
+      padding-left: var(--space-3);
+      padding-right: var(--space-3);
+    }
+
+    .items-header-sticky .btn {
+      min-height: 2.5rem;
     }
   }
 
