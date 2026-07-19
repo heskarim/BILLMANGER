@@ -14,6 +14,7 @@
     Plus,
     X,
     Filter,
+    Calendar,
     FileSpreadsheet,
     Download
   } from '@lucide/svelte';
@@ -25,22 +26,28 @@
   // ----------------------------------------------------
   let searchQuery = $state('');
   let typeFilter = $state('all');
+  let dateFrom = $state('');
+  let dateTo = $state('');
 
-  // Reactively filter bills based on search input and dropdown filter
+  // Reactively filter bills based on search input, type, and date range
   let filteredBills = $derived(
     data.bills.filter(bill => {
       const matchText = searchQuery.trim().toLowerCase();
-      const matchesSearch = !matchText || 
+      const matchesSearch = !matchText ||
         bill.bill_number.toLowerCase().includes(matchText) ||
         (bill.client_name_snapshot || '').toLowerCase().includes(matchText);
-        
+
       const matchesType = typeFilter === 'all' || bill.type === typeFilter;
-      
-      return matchesSearch && matchesType;
+
+      // Date range filter — compares the business date (YYYY-MM-DD strings sort correctly)
+      const matchesFrom = !dateFrom || (bill.date && bill.date >= dateFrom);
+      const matchesTo = !dateTo || (bill.date && bill.date <= dateTo);
+
+      return matchesSearch && matchesType && matchesFrom && matchesTo;
     })
   );
 
-  // Helper to format date
+  // Helper to format date (YYYY-MM-DD -> DD/MM/YYYY)
   function formatDate(dStr: string): string {
     if (!dStr) return '';
     try {
@@ -54,10 +61,20 @@
     }
   }
 
+  // Helper to format the saved-on timestamp (created_at) as DD/MM/YYYY
+  function formatCreatedAt(ts: string | undefined | null): string {
+    if (!ts) return '—';
+    // SQLite CURRENT_TIMESTAMP is "YYYY-MM-DD HH:MM:SS" (UTC) — take the date part
+    const datePart = ts.split(' ')[0].split('T')[0];
+    return formatDate(datePart);
+  }
+
   // Clear filters
   function clearFilters() {
     searchQuery = '';
     typeFilter = 'all';
+    dateFrom = '';
+    dateTo = '';
   }
 </script>
 
@@ -163,7 +180,28 @@
         </select>
       </div>
 
-      {#if searchQuery || typeFilter !== 'all'}
+      <div class="date-range-wrapper">
+        <Calendar size={15} class="date-range-icon" />
+        <input
+          type="date"
+          class="input-field date-input"
+          bind:value={dateFrom}
+          max={dateTo || undefined}
+          title="From date"
+          aria-label="Filter from date"
+        />
+        <span class="date-range-sep">→</span>
+        <input
+          type="date"
+          class="input-field date-input"
+          bind:value={dateTo}
+          min={dateFrom || undefined}
+          title="To date"
+          aria-label="Filter to date"
+        />
+      </div>
+
+      {#if searchQuery || typeFilter !== 'all' || dateFrom || dateTo}
         <button onclick={clearFilters} class="btn btn-secondary btn-clear">
           <span>Reset</span>
         </button>
@@ -196,6 +234,7 @@
               <th style="width: 130px;">Type</th>
               <th>Customer / Client</th>
               <th style="width: 120px;">Date</th>
+              <th style="width: 120px;">Created On</th>
               <th style="width: 150px; text-align: right;">Total Amount</th>
               <th style="width: 170px; text-align: center;">Actions</th>
             </tr>
@@ -227,9 +266,14 @@
                   {/if}
                 </td>
 
-                <!-- Date created -->
+                <!-- Business / invoice date -->
                 <td class="date-cell">
                   {formatDate(bill.date)}
+                </td>
+
+                <!-- Real creation timestamp (when it was saved into the system) -->
+                <td class="date-cell created-cell">
+                  {formatCreatedAt(bill.created_at)}
                 </td>
 
                 <!-- Total Amount -->
@@ -549,6 +593,62 @@
     padding-left: 2.35rem;
     appearance: none;
     cursor: pointer;
+  }
+
+  /* ---- Date Range Filter ---- */
+  .date-range-wrapper {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    padding-left: 2.1rem;
+    background: var(--bg-input);
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius-md);
+    padding-right: var(--space-2);
+  }
+
+  :global(.date-range-icon) {
+    position: absolute;
+    left: var(--space-3);
+    pointer-events: none;
+    color: var(--text-muted);
+    z-index: 1;
+  }
+
+  .date-input {
+    border: none;
+    background: transparent;
+    padding: var(--space-2) var(--space-1);
+    width: 130px;
+    color-scheme: light dark;
+    cursor: pointer;
+  }
+
+  .date-input:focus {
+    outline: none;
+    box-shadow: none;
+  }
+
+  .date-range-sep {
+    color: var(--text-muted);
+    font-size: var(--text-sm);
+    flex-shrink: 0;
+  }
+
+  @media (max-width: 800px) {
+    .date-range-wrapper {
+      grid-column: 1 / -1;
+      justify-content: space-between;
+    }
+    .date-input {
+      width: 100%;
+      flex: 1;
+    }
+  }
+
+  .created-cell {
+    color: var(--text-muted);
   }
 
   .btn-clear {

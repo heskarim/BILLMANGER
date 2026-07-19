@@ -37,10 +37,10 @@
   // PAGINATION CHUNKING LOGIC
   // ----------------------------------------------------
   function partitionItems(itemsList: typeof items, isLivraison: boolean) {
-    const page1MaxWithFooter = 9;
-    const page1MaxWithoutFooter = 15;
-    const otherPageMaxWithFooter = 20;
-    const otherPageMaxWithoutFooter = 28;
+    const page1MaxWithFooter = 14;
+    const page1MaxWithoutFooter = 20;
+    const otherPageMaxWithFooter = 25;
+    const otherPageMaxWithoutFooter = 33;
 
     if (itemsList.length <= page1MaxWithFooter) {
       return [itemsList];
