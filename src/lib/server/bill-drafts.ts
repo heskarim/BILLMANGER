@@ -170,28 +170,35 @@ export function createDraftStore(database: Database.Database): DraftStore {
         throw new DraftValidationError(error instanceof Error ? error.message : 'Invalid draft payload');
       }
 
-      return database.transaction(() => {
-        const existing = getRow(input.draftKey);
-        if (!existing) {
-          if (input.expectedRevision !== 0) throw new DraftConflictError(0);
-          database.prepare('INSERT INTO bill_drafts (draft_key, payload_json, revision) VALUES (?, ?, 1)')
-            .run(input.draftKey, JSON.stringify(payload));
-        } else {
-          if (input.expectedRevision !== existing.revision) throw new DraftConflictError(existing.revision);
-          const result = database.prepare(`
-            UPDATE bill_drafts
-            SET payload_json = ?, revision = revision + 1, updated_at = CURRENT_TIMESTAMP
-            WHERE draft_key = ? AND revision = ?
-          `).run(JSON.stringify(payload), input.draftKey, input.expectedRevision);
-          if (result.changes !== 1) {
-            const current = getRow(input.draftKey);
-            throw new DraftConflictError(current?.revision ?? 0);
+      try {
+        return database.transaction(() => {
+          const existing = getRow(input.draftKey);
+          if (!existing) {
+            if (input.expectedRevision !== 0) throw new DraftConflictError(0);
+            database.prepare('INSERT INTO bill_drafts (draft_key, payload_json, revision) VALUES (?, ?, 1)')
+              .run(input.draftKey, JSON.stringify(payload));
+          } else {
+            if (input.expectedRevision !== existing.revision) throw new DraftConflictError(existing.revision);
+            const result = database.prepare(`
+              UPDATE bill_drafts
+              SET payload_json = ?, revision = revision + 1, updated_at = CURRENT_TIMESTAMP
+              WHERE draft_key = ? AND revision = ?
+            `).run(JSON.stringify(payload), input.draftKey, input.expectedRevision);
+            if (result.changes !== 1) {
+              const current = getRow(input.draftKey);
+              throw new DraftConflictError(current?.revision ?? 0);
+            }
           }
+          const saved = getRow(input.draftKey);
+          if (!saved) throw new Error('Draft write failed');
+          return { draftKey: saved.draft_key, revision: saved.revision, updatedAt: saved.updated_at };
+        })();
+      } catch (error) {
+        if (error instanceof Error && error.message.includes('UNIQUE constraint failed: bill_drafts.draft_key')) {
+          throw new DraftConflictError(getRow(input.draftKey)?.revision ?? 0);
         }
-        const saved = getRow(input.draftKey);
-        if (!saved) throw new Error('Draft write failed');
-        return { draftKey: saved.draft_key, revision: saved.revision, updatedAt: saved.updated_at };
-      })();
+        throw error;
+      }
     },
 
     getDraft(draftKey) {

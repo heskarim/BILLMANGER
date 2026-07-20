@@ -182,6 +182,22 @@ test('a conflict does not retry and blocks later automatic saves', async () => {
   assert.equal(context.states.at(-1), 'conflict');
 });
 
+test('a successful best-effort keepalive acknowledges the pending generation', async () => {
+  const calls: Array<{ keepalive?: boolean }> = [];
+  const context = setup({ save: async (input) => {
+    calls.push({ keepalive: input.keepalive });
+    return { revision: 1, updatedAt: 'now' };
+  } });
+  context.controller.markMeaningfulChange();
+  context.controller.bestEffortKeepalive();
+  for (let index = 0; index < 8; index += 1) await Promise.resolve();
+  assert.deepEqual(calls, [{ keepalive: true }]);
+  assert.equal(context.controller.getRevision(), 1);
+  assert.equal(context.controller.hasPendingChanges(), false);
+  await context.scheduler.advance(1000);
+  assert.equal(calls.length, 1);
+});
+
 test('flush cancels debounce and waits for latest dirty state', async () => {
   const inputs: string[] = [];
   const context = setup({ save: async ({ payload }) => { inputs.push(payload.clientName); return { revision: inputs.length, updatedAt: 'now' }; } });

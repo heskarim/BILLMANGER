@@ -1,6 +1,6 @@
 <script lang="ts">
   import { beforeNavigate, goto } from '$app/navigation';
-  import { onDestroy } from 'svelte';
+  import { onDestroy, onMount } from 'svelte';
   import { numberToWordsFrench } from '$lib/utils/frenchWords';
   import type { BillDraftPayloadV1, DraftSaveState } from '$lib/bill-drafts';
   import {
@@ -211,13 +211,16 @@
     event.returnValue = '';
   }
 
-  window.addEventListener('pagehide', handlePageHide);
-  window.addEventListener('beforeunload', handleBeforeUnload);
-  onDestroy(() => {
-    window.removeEventListener('pagehide', handlePageHide);
-    window.removeEventListener('beforeunload', handleBeforeUnload);
-    autosave.dispose();
+  onMount(() => {
+    window.addEventListener('pagehide', handlePageHide);
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => {
+      window.removeEventListener('pagehide', handlePageHide);
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+    };
   });
+
+  onDestroy(() => autosave.dispose());
 
   async function finalizeDraft(): Promise<void> {
     if (saving) return;

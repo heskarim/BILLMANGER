@@ -79,6 +79,7 @@ export const actions: Actions = {
         ...result.bill,
         bill_number: nextNumber,
         date: new Date().toISOString().split('T')[0],
+        source_draft_key: null,
       }, result.items.map(item => ({
         product_name: item.product_name,
         unit: item.unit,

@@ -8,6 +8,8 @@ import {
 } from '$lib/server/bill-drafts.js';
 import type { RequestHandler } from './$types';
 
+const MAX_BODY_BYTES = 1_048_576;
+
 function jsonBody(value: unknown, status = 200): Response {
   return new Response(JSON.stringify(value), {
     status,
@@ -19,6 +21,10 @@ export function _createFinalizeHandler(store: DraftStore): RequestHandler {
   return async ({ params, request }) => {
     try {
       assertDraftKey(params.draftKey);
+      const contentLength = request.headers.get('content-length');
+      if (contentLength && Number(contentLength) > MAX_BODY_BYTES) {
+        throw new DraftValidationError('Request body is too large');
+      }
       let body: Record<string, unknown>;
       try {
         body = await request.json() as Record<string, unknown>;
