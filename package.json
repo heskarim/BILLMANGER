@@ -10,6 +10,11 @@
 		"prepare": "svelte-kit sync || echo ''",
 		"check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
 		"check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
+		"test:drafts": "tsx --test src/lib/bill-drafts.test.ts src/lib/server/bill-drafts.test.ts src/lib/bill-draft-autosave.test.ts 'src/routes/api/bill-drafts/[draftKey]/draft-api.test.ts'",
+		"test:drafts:contracts": "tsx --test src/lib/bill-drafts.test.ts",
+		"test:drafts:repository": "tsx --test src/lib/server/bill-drafts.test.ts",
+		"test:drafts:controller": "tsx --test src/lib/bill-draft-autosave.test.ts",
+		"test:drafts:api": "tsx --test 'src/routes/api/bill-drafts/[draftKey]/draft-api.test.ts'",
 		"seed:demo": "npx tsx scripts/seed-example-bill.ts"
 	},
 	"devDependencies": {
