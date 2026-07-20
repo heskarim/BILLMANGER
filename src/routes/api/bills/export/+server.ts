@@ -83,6 +83,7 @@ export const GET: RequestHandler = async () => {
   ];
   // Freeze the header row
   wsItems['!freeze'] = { xSplit: 0, ySplit: 1 };
+  wsItems['!autofilter'] = { ref: `A1:N${itemsAoa.length}` };
 
   // ---- Sheet 2: Summary (one row per bill) ----
   const sumHeader = [
@@ -111,6 +112,7 @@ export const GET: RequestHandler = async () => {
     { wch: 12 }, { wch: 12 }, { wch: 8 }, { wch: 14 }, { wch: 16 }, { wch: 20 },
   ];
   wsSum['!freeze'] = { xSplit: 0, ySplit: 1 };
+  wsSum['!autofilter'] = { ref: `A1:K${sumAoa.length}` };
 
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, wsItems, 'Lignes');

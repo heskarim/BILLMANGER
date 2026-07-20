@@ -27,6 +27,7 @@
 		"@lucide/svelte": "^1.17.0",
 		"better-sqlite3": "^12.10.0",
 		"lucide-svelte": "^1.0.1",
-		"xlsx": "^0.18.5"
+		"xlsx": "^0.18.5",
+		"xlsx-js-style": "^1.2.0"
 	}
 }

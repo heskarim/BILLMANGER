@@ -454,7 +454,7 @@
 
     <!-- 4. DYNAMIC LINE ITEMS TABLE -->
     <div class="card form-section items-section" style="animation: fadeInUp 0.5s var(--ease-spring) both; animation-delay: 280ms;">
-      <div class="items-header">
+      <div class="items-header items-header-sticky">
         <h3 class="section-title">Line Items</h3>
         <button type="button" class="btn btn-secondary btn-sm" onclick={addRow}>
           <Plus size={16} />
@@ -646,6 +646,16 @@
     </div>
 
   </form>
+
+    <button
+      type="button"
+      class="btn btn-primary floating-add-row no-print"
+      onclick={addRow}
+      aria-label="Add another line item"
+    >
+      <Plus size={18} />
+      <span>Add Row</span>
+    </button>
 
     {#if showPreview}
       <!-- Live Preview Panel on the Right (inside workspace flex) -->
@@ -1184,6 +1194,29 @@
     margin-bottom: var(--space-2);
   }
 
+  .items-header-sticky {
+    position: sticky;
+    top: 0;
+    z-index: 30;
+    margin: calc(-1 * var(--space-5)) calc(-1 * var(--space-5)) var(--space-4);
+    padding: var(--space-3) var(--space-5);
+    background: var(--bg-card);
+    border-bottom: 1px solid var(--border-color);
+    border-radius: var(--border-radius-lg) var(--border-radius-lg) 0 0;
+    box-shadow: 0 8px 18px oklch(0 0 0 / 0.08);
+  }
+
+  .floating-add-row {
+    display: inline-flex;
+    position: fixed;
+    right: var(--space-6);
+    bottom: var(--space-6);
+    z-index: 120;
+    border-radius: var(--border-radius-pill);
+    box-shadow: var(--shadow-lg), 0 0 0 4px var(--color-accent-glow);
+  }
+
+
   .items-header .section-title {
     border-left: 3px solid var(--color-accent);
     padding-left: var(--space-3);
@@ -1198,6 +1231,36 @@
   .table-responsive {
     overflow-x: visible;
     margin-top: var(--space-2);
+  }
+
+  @media (max-width: 900px) {
+    .floating-add-row {
+      right: var(--space-4);
+      bottom: var(--space-4);
+    }
+
+    .items-header-sticky {
+      top: 0;
+      margin-left: calc(-1 * var(--space-3));
+      margin-right: calc(-1 * var(--space-3));
+      padding-left: var(--space-3);
+      padding-right: var(--space-3);
+      gap: var(--space-2);
+    }
+
+    .items-header-sticky .section-title {
+      min-width: 0;
+      font-size: 1rem;
+    }
+
+    .items-header-sticky .btn {
+      min-height: 2.5rem;
+      flex-shrink: 0;
+    }
+
+    .items-header-sticky .btn span {
+      display: none;
+    }
   }
 
   @media (max-width: 768px) {
