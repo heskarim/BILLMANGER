@@ -834,7 +834,7 @@
         {/if}
       </div>
 
-      <div class="form-actions">
+      <div class="editor-submit-bar">
         <a href="/" class="btn btn-secondary">Cancel</a>
         <button type="submit" class="btn btn-primary" disabled={saving}>
           <span>{saving ? 'Creating document…' : 'Create document'}</span>
@@ -1547,15 +1547,16 @@
     line-height: 1.6;
   }
 
-  .form-actions {
+  .editor-submit-bar {
     display: flex;
     justify-content: flex-end;
     align-items: center;
     gap: var(--space-3);
     padding: var(--space-4) 0 var(--space-2);
+    position: static;
   }
 
-  .form-actions .btn {
+  .editor-submit-bar .btn {
     min-height: 2.75rem;
     padding: 0.7rem 1.25rem;
   }
@@ -1673,12 +1674,12 @@
       grid-template-columns: 1fr;
     }
 
-    .form-actions {
+    .editor-submit-bar {
       flex-direction: column-reverse;
       align-items: stretch;
     }
 
-    .form-actions .btn {
+    .editor-submit-bar .btn {
       width: 100%;
       justify-content: center;
     }
