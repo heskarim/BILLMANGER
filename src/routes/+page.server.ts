@@ -1,4 +1,6 @@
 import { getBills, deleteBill, getBillById, getNextBillNumber, createBill } from '$lib/server/db';
+import { toDraftSummary } from '$lib/bill-drafts';
+import { assertDraftKey, draftStore, DraftValidationError } from '$lib/server/bill-drafts';
 import { fail, redirect } from '@sveltejs/kit';
 import type { PageServerLoad, Actions } from './$types';
 
@@ -16,6 +18,7 @@ export const load: PageServerLoad = async () => {
 
   return {
     bills,
+    drafts: draftStore.listDrafts().map(toDraftSummary),
     stats: {
       totalInvoices,
       totalProformas,
@@ -26,6 +29,21 @@ export const load: PageServerLoad = async () => {
 };
 
 export const actions: Actions = {
+  deleteDraft: async ({ request }) => {
+    const data = await request.formData();
+    const draftKey = data.get('draftKey');
+    if (typeof draftKey !== 'string') return fail(400, { error: 'Invalid draft key' });
+    try {
+      assertDraftKey(draftKey);
+      if (!draftStore.deleteDraft(draftKey)) return fail(404, { error: 'Draft not found' });
+      return { success: true };
+    } catch (error) {
+      if (error instanceof DraftValidationError) return fail(400, { error: 'Invalid draft key' });
+      console.error('Failed to delete bill draft', { draftKey, error: error instanceof Error ? error.name : 'UnknownError' });
+      return fail(500, { error: 'Failed to delete draft' });
+    }
+  },
+
   deleteBill: async ({ request }) => {
     const data = await request.formData();
     const id = parseInt(data.get('id') as string, 10);

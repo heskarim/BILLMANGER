@@ -1,5 +1,6 @@
 <script lang="ts">
   import { enhance } from '$app/forms';
+  import DraftList from '$lib/components/DraftList.svelte';
   import {
     LayoutDashboard,
     Receipt,
@@ -163,6 +164,10 @@
       </div>
     </div>
   </div>
+
+  {#if data.drafts.length > 0}
+    <DraftList drafts={data.drafts} />
+  {/if}
 
   <!-- 2. SEARCH AND FILTER TOOLS -->
   <div class="filter-bar animate-in" style="animation-delay: 380ms;">
