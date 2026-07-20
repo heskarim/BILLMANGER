@@ -107,39 +107,53 @@ git commit -m "refactor: share printable bill document"
 - Create: `src/routes/bills/[id]/pdf/+page.svelte`
 
 **Interfaces:**
-- Consumes: route parameter `id` and query mode `saved | bundle`.
+- Consumes: route parameter `id`, query mode `saved | bundle`, and optional comma-separated bundle `types`.
 - Produces: a control-free HTML page with `documentTypes` ready for Chromium PDF rendering.
 
-- [ ] **Step 1: Add server-side bill loading and mode validation**
+- [ ] **Step 1: Add server-side bill loading, mode validation, and selected-type parsing**
 
-Follow the existing bill detail loader's database calls. Validate the mode and derive document types:
+Use the same database functions as the existing detail loader and canonicalize selected types:
 
 ```ts
+import { getBillById, getSettings } from '$lib/server/db';
 import { error } from '@sveltejs/kit';
 import type { PageServerLoad } from './$types';
 
 const ALL_TYPES = ['facture', 'proforma', 'livraison'] as const;
+type DocumentType = (typeof ALL_TYPES)[number];
 
-export const load: PageServerLoad = async ({ params, url, locals }) => {
+function parseDocumentTypes(
+  mode: 'saved' | 'bundle',
+  value: string | null,
+  savedType: DocumentType
+): DocumentType[] {
+  if (mode === 'saved') return [savedType];
+  if (value === null) return [...ALL_TYPES];
+  const selected = new Set(value.split(','));
+  const ordered = ALL_TYPES.filter((type) => selected.has(type));
+  if (ordered.length === 0) error(400, 'Select at least one document type');
+  return ordered;
+}
+
+export const load: PageServerLoad = async ({ params, url }) => {
   const mode = url.searchParams.get('mode');
   if (mode !== 'saved' && mode !== 'bundle') error(400, 'Unsupported PDF mode');
 
-  const bill = /* load by Number(params.id) using the same repository as ../+page.server.ts */;
-  if (!bill) error(404, 'Bill not found');
-
-  const items = /* load bill items */;
-  const settings = /* load company settings */;
+  const id = Number(params.id);
+  if (!Number.isInteger(id) || id <= 0) error(400, 'Invalid bill ID');
+  const result = getBillById(id);
+  if (!result) error(404, 'Bill not found');
 
   return {
-    bill,
-    items,
-    settings,
-    documentTypes: mode === 'bundle' ? [...ALL_TYPES] : [bill.type]
+    bill: result.bill,
+    items: result.items,
+    settings: getSettings(),
+    documentTypes: parseDocumentTypes(mode, url.searchParams.get('types'), result.bill.type)
   };
 };
 ```
 
-Use the concrete imports and functions already present in `src/routes/bills/[id]/+page.server.ts`; do not introduce a second database connection.
+Move `parseDocumentTypes` to `src/lib/server/pdf-renderer.ts` in Task 3 so the internal route and endpoint share it. Do not introduce a second database connection.
 
 - [ ] **Step 2: Render only the printable component**
 
@@ -170,10 +184,12 @@ Run the dev server and check:
 ```bash
 curl -I 'http://127.0.0.1:5173/bills/1/pdf?mode=saved'
 curl -I 'http://127.0.0.1:5173/bills/1/pdf?mode=bundle'
+curl -I 'http://127.0.0.1:5173/bills/1/pdf?mode=bundle&types=facture,livraison'
+curl -I 'http://127.0.0.1:5173/bills/1/pdf?mode=bundle&types=unknown'
 curl -I 'http://127.0.0.1:5173/bills/1/pdf?mode=invalid'
 ```
 
-Expected: `200`, `200`, and `400`. Visually open both successful routes and confirm the saved route has one document type while the bundle route has all three.
+Expected: `200`, `200`, `200`, `400`, and `400`. Visually confirm saved mode has one type, bundle without `types` has all three, and selected bundle has exactly invoice then delivery note.
 
 - [ ] **Step 4: Commit**
 
@@ -213,7 +229,7 @@ Use Node's test runner through `tsx`:
 ```ts
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { buildPdfFilename, parsePdfMode } from './pdf-renderer';
+import { buildPdfFilename, parseDocumentTypes, parsePdfMode } from './pdf-renderer';
 
 test('sanitizes saved PDF filenames', () => {
   assert.equal(buildPdfFilename('facture', '2025/0009', 'saved'), 'Facture_2025-0009.pdf');
@@ -225,6 +241,22 @@ test('uses bundle filename in bundle mode', () => {
 
 test('rejects unsupported modes', () => {
   assert.throws(() => parsePdfMode('other'), /Unsupported PDF mode/);
+});
+
+test('defaults dashboard bundles to all three document types', () => {
+  assert.deepEqual(parseDocumentTypes('bundle', null, 'facture'), ['facture', 'proforma', 'livraison']);
+});
+
+test('canonicalizes and de-duplicates selected detail bundle types', () => {
+  assert.deepEqual(parseDocumentTypes('bundle', 'livraison,facture,livraison', 'proforma'), ['facture', 'livraison']);
+});
+
+test('saved mode ignores selected types', () => {
+  assert.deepEqual(parseDocumentTypes('saved', 'livraison', 'proforma'), ['proforma']);
+});
+
+test('rejects a bundle with no valid selected type', () => {
+  assert.throws(() => parseDocumentTypes('bundle', 'unknown', 'facture'), /Select at least one/);
 });
 ```
 
@@ -246,6 +278,22 @@ export type PdfMode = 'saved' | 'bundle';
 export function parsePdfMode(value: string | null): PdfMode {
   if (value === 'saved' || value === 'bundle') return value;
   throw new Error('Unsupported PDF mode');
+}
+
+const DOCUMENT_TYPES = ['facture', 'proforma', 'livraison'] as const;
+type DocumentType = (typeof DOCUMENT_TYPES)[number];
+
+export function parseDocumentTypes(
+  mode: PdfMode,
+  value: string | null,
+  savedType: DocumentType
+): DocumentType[] {
+  if (mode === 'saved') return [savedType];
+  if (value === null) return [...DOCUMENT_TYPES];
+  const selected = new Set(value.split(','));
+  const ordered = DOCUMENT_TYPES.filter((type) => selected.has(type));
+  if (ordered.length === 0) throw new Error('Select at least one document type');
+  return ordered;
 }
 
 export function buildPdfFilename(
@@ -285,11 +333,13 @@ export async function renderPdf(url: string): Promise<Uint8Array> {
 
 - [ ] **Step 5: Make the endpoint load the bill, render, and download**
 
-The handler validates the numeric ID and mode, loads the bill to obtain its type/number, derives the same-origin internal URL, and returns bytes:
+The handler validates the numeric ID and mode, parses `types` with `parseDocumentTypes`, loads the bill to obtain its type/number, derives the same-origin internal URL, and returns bytes. Preserve selected bundle types in the internal URL:
 
 ```ts
+const documentTypes = parseDocumentTypes(mode, url.searchParams.get('types'), bill.type);
 const renderUrl = new URL(`/bills/${bill.id}/pdf`, url.origin);
 renderUrl.searchParams.set('mode', mode);
+if (mode === 'bundle') renderUrl.searchParams.set('types', documentTypes.join(','));
 const pdf = await renderPdf(renderUrl.toString());
 
 return new Response(pdf, {
@@ -331,7 +381,7 @@ git commit -m "feat: generate downloadable bill PDFs"
 - Modify: `src/routes/bills/[id]/+page.svelte`
 
 **Interfaces:**
-- Consumes: `/api/bills/{id}/pdf?mode=saved|bundle`.
+- Consumes: `/api/bills/{id}/pdf?mode=saved|bundle` and detail bundle `types`.
 - Produces: two accessible PDF download actions on each dashboard row and two labelled actions on bill details.
 
 - [ ] **Step 1: Add dashboard row actions**
@@ -361,20 +411,26 @@ Keep actions usable at existing responsive breakpoints; if the row becomes crowd
 
 - [ ] **Step 2: Add labelled detail-page actions**
 
-Add to the right action group before XLSX:
+Add to the right action group before XLSX. Derive the selected URL from the existing `printBundle` state:
 
 ```svelte
 <a href="/api/bills/{bill.id}/pdf?mode=saved" class="btn btn-primary">
   <FileDown size={16} />
   <span>Download PDF</span>
 </a>
-<a href="/api/bills/{bill.id}/pdf?mode=bundle" class="btn btn-secondary">
+<a
+  href={`/api/bills/${bill.id}/pdf?mode=bundle&types=${encodeURIComponent(printBundle.join(','))}`}
+  class="btn btn-secondary"
+  class:disabled={printBundle.length === 0}
+  aria-disabled={printBundle.length === 0}
+  onclick={(event) => { if (printBundle.length === 0) event.preventDefault(); }}
+>
   <Files size={16} />
   <span>Download Full Bundle</span>
 </a>
 ```
 
-Keep the existing Print/PDF button, bundle checkboxes, and Export XLSX action unchanged.
+Keep the existing Print/PDF button, bundle checkboxes, and Export XLSX action unchanged. The dashboard bundle link omits `types` and therefore includes all three.
 
 - [ ] **Step 3: Verify both screens visually**
 
@@ -421,7 +477,7 @@ Capture a screenshot as evidence.
 
 - [ ] **Step 3: Open and visually inspect the full bundle PDF**
 
-Open the downloaded bundle in Chrome's PDF viewer and inspect every page. Confirm invoice, proforma, and delivery note are each present and begin on clean page boundaries. Confirm delivery-note pages omit unit-price, line-total, tax, and grand-total content. Capture representative screenshots.
+Open downloaded bundles in Chrome's PDF viewer and inspect every page. Confirm a dashboard bundle includes invoice, proforma, and delivery note on clean page boundaries. On the detail page, select invoice and delivery note only; confirm exactly those two appear in canonical order. Confirm no-selection cannot download and delivery-note pages omit unit-price, line-total, tax, and grand-total content. Capture representative screenshots.
 
 - [ ] **Step 4: Verify a long bill**
 

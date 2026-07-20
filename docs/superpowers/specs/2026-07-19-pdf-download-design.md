@@ -23,9 +23,9 @@ The compact dashboard actions use distinct PDF icons and accessible titles/label
 The operations bar has two labelled actions:
 
 1. **Download PDF** downloads the saved document type.
-2. **Download Full Bundle** downloads all three document types in one PDF.
+2. **Download Full Bundle** downloads the document types currently selected in the existing print-bundle checkboxes, preserving their canonical invoice, proforma, delivery-note order.
 
-The current browser print action and XLSX export remain available.
+At least one type must remain selected. The current browser print action and XLSX export remain available.
 
 ## Endpoint
 
@@ -34,10 +34,13 @@ A server endpoint handles both downloads:
 ```text
 GET /api/bills/{id}/pdf?mode=saved
 GET /api/bills/{id}/pdf?mode=bundle
+GET /api/bills/{id}/pdf?mode=bundle&types=facture,livraison
 ```
 
-- `saved` renders only the bill's persisted type.
-- `bundle` renders invoice, proforma, and delivery-note copies in that order.
+- `saved` renders only the bill's persisted type and ignores `types`.
+- Dashboard `bundle` requests omit `types` and render invoice, proforma, and delivery-note copies in that order.
+- Detail-page `bundle` requests include the currently selected types as a comma-separated allowlist. The server de-duplicates and restores canonical invoice, proforma, delivery-note order regardless of query order.
+- A bundle with no valid selected type returns HTTP 400.
 - Missing bills return HTTP 404.
 - Unsupported modes return HTTP 400.
 - Rendering failures return HTTP 500 with a useful server log and no invalid PDF download.
@@ -106,10 +109,11 @@ Completion requires all of the following:
 7. A downloaded saved-type PDF is opened and visually inspected in a real browser or PDF renderer.
 8. A downloaded bundle PDF is opened and visually inspected page by page.
 9. Visual inspection confirms A4 proportions, readable text, complete headers, non-clipped rows, correct totals, and no unexpected blank pages.
-10. The bundle visibly contains invoice, proforma, and delivery-note documents.
-11. Delivery-note pages visibly omit price and financial-total columns.
-12. At least one long bill is checked visually for pagination behavior.
-13. Existing browser Print/PDF and XLSX exports still work.
+10. A dashboard bundle visibly contains invoice, proforma, and delivery-note documents.
+11. A detail-page bundle contains exactly the types selected in the existing checkboxes, in canonical order.
+12. Delivery-note pages visibly omit price and financial-total columns.
+13. At least one long bill is checked visually for pagination behavior.
+14. Existing browser Print/PDF and XLSX exports still work.
 
 Structural checks alone are not sufficient; visual PDF inspection is mandatory.
 
