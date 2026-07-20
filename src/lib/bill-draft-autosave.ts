@@ -154,7 +154,7 @@ export function createBillDraftAutosave(options: BillDraftAutosaveOptions): Bill
   }
 
   function markMeaningfulChange(): void {
-    if (disposed || conflict || terminal instanceof DraftTransportPermanent) return;
+    if (disposed || conflict) return;
     if (!draftKey) {
       draftKey = createKey();
       options.onDraftCreated(draftKey);

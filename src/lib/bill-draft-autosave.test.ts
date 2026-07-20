@@ -152,18 +152,34 @@ test('transient failures retry at 1s, 2s, and 5s before exposing failure', async
   assert.equal(context.controller.hasPendingChanges(), true);
 });
 
-test('permanent and conflict responses do not retry, while conflicts block later saves', async () => {
-  for (const error of [new DraftTransportPermanent('bad data'), new DraftTransportConflict(7)]) {
-    let calls = 0;
-    const context = setup({ save: async () => { calls += 1; throw error; } });
-    context.controller.markMeaningfulChange();
-    await context.scheduler.advance(1000);
-    await context.scheduler.advance(10_000);
-    context.controller.markMeaningfulChange();
-    await context.scheduler.advance(10_000);
-    assert.equal(calls, 1);
-    assert.equal(context.states.at(-1), error instanceof DraftTransportConflict ? 'conflict' : 'failed');
-  }
+test('a permanent response does not retry automatically but a later edit can save', async () => {
+  let calls = 0;
+  const context = setup({ save: async () => {
+    calls += 1;
+    if (calls === 1) throw new DraftTransportPermanent('bad data');
+    return { revision: 1, updatedAt: 'now' };
+  } });
+  context.controller.markMeaningfulChange();
+  await context.scheduler.advance(1000);
+  await context.scheduler.advance(10_000);
+  assert.equal(calls, 1);
+  assert.equal(context.states.at(-1), 'failed');
+  context.controller.markMeaningfulChange();
+  await context.scheduler.advance(1000);
+  assert.equal(calls, 2);
+  assert.equal(context.states.at(-1), 'saved');
+});
+
+test('a conflict does not retry and blocks later automatic saves', async () => {
+  let calls = 0;
+  const context = setup({ save: async () => { calls += 1; throw new DraftTransportConflict(7); } });
+  context.controller.markMeaningfulChange();
+  await context.scheduler.advance(1000);
+  await context.scheduler.advance(10_000);
+  context.controller.markMeaningfulChange();
+  await context.scheduler.advance(10_000);
+  assert.equal(calls, 1);
+  assert.equal(context.states.at(-1), 'conflict');
 });
 
 test('flush cancels debounce and waits for latest dirty state', async () => {
