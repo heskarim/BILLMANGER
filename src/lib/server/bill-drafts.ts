@@ -163,7 +163,12 @@ export function createDraftStore(database: Database.Database): DraftStore {
       if (!Number.isInteger(input.expectedRevision) || input.expectedRevision < 0) {
         throw new DraftValidationError('expectedRevision must be a nonnegative integer');
       }
-      const payload = normalizeDraftPayload(input.payload);
+      let payload: BillDraftPayloadV1;
+      try {
+        payload = normalizeDraftPayload(input.payload);
+      } catch (error) {
+        throw new DraftValidationError(error instanceof Error ? error.message : 'Invalid draft payload');
+      }
 
       return database.transaction(() => {
         const existing = getRow(input.draftKey);
