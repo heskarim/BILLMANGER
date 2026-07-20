@@ -46,19 +46,36 @@ export function buildPdfFilename(
   return `${prefix}_${safeNumber}.pdf`;
 }
 
-export async function renderPdf(url: string): Promise<Buffer> {
-  let browser;
+export function parseBillIds(value: string | null, max = 20): number[] {
+  if (!value || !value.trim()) {
+    throw new Error('Select at least one document');
+  }
+
+  const ids = value
+    .split(',')
+    .map((part) => Number(part.trim()))
+    .filter((id) => Number.isInteger(id) && id > 0);
+
+  const unique = [...new Set(ids)];
+  if (unique.length === 0) throw new Error('Select at least one document');
+  if (unique.length > max) throw new Error(`You can download at most ${max} documents at once`);
+  return unique;
+}
+
+async function launchBrowser() {
   try {
-    browser = await chromium.launch({ headless: true });
+    return await chromium.launch({ headless: true });
   } catch (cause) {
     throw new Error(
       'Chromium could not start. Install the matching browser with "npx playwright install chromium".',
       { cause }
     );
   }
+}
 
+async function renderPdfWithBrowser(browser: Awaited<ReturnType<typeof chromium.launch>>, url: string): Promise<Buffer> {
+  const page = await browser.newPage();
   try {
-    const page = await browser.newPage();
     const response = await page.goto(url, { waitUntil: 'networkidle' });
     if (!response?.ok()) {
       throw new Error(`Printable bill page returned HTTP ${response?.status() ?? 'unknown'}`);
@@ -68,14 +85,35 @@ export async function renderPdf(url: string): Promise<Buffer> {
       await document.fonts.ready;
     });
 
-    const buffer = await page.pdf({
+    return await page.pdf({
       format: 'A4',
       printBackground: true,
       preferCSSPageSize: true,
       margin: { top: '0', right: '0', bottom: '0', left: '0' }
     });
+  } finally {
+    await page.close();
+  }
+}
 
-    return buffer;
+export async function renderPdf(url: string): Promise<Buffer> {
+  const browser = await launchBrowser();
+  try {
+    return await renderPdfWithBrowser(browser, url);
+  } finally {
+    await browser.close();
+  }
+}
+
+export async function renderPdfs(urls: string[]): Promise<Buffer[]> {
+  if (urls.length === 0) return [];
+  const browser = await launchBrowser();
+  try {
+    const buffers: Buffer[] = [];
+    for (const url of urls) {
+      buffers.push(await renderPdfWithBrowser(browser, url));
+    }
+    return buffers;
   } finally {
     await browser.close();
   }

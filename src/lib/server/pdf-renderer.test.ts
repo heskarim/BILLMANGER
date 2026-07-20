@@ -54,3 +54,14 @@ test('rejects a bundle with no valid selected type', () => {
     /Select at least one document type/
   );
 });
+
+test('parses unique positive bill ids and rejects empty or oversized selections', async () => {
+  const { parseBillIds } = await import('./pdf-renderer.js');
+  assert.deepEqual(parseBillIds('3,1,3,2'), [3, 1, 2]);
+  assert.throws(() => parseBillIds(''), /Select at least one document/);
+  assert.throws(() => parseBillIds('a,b'), /Select at least one document/);
+  assert.throws(
+    () => parseBillIds(Array.from({ length: 21 }, (_, i) => i + 1).join(',')),
+    /at most 20/
+  );
+});
