@@ -241,11 +241,17 @@
       const body = await response.json().catch(() => ({}));
       if (!response.ok) {
         fieldErrors = body.fields ?? {};
+        if (response.status === 409 && typeof body.serverRevision === 'number') {
+          draftState = { kind: 'conflict', serverRevision: body.serverRevision };
+        }
         if (body.latestSuggestedNumber) {
           finalError = `${body.message ?? 'Document number already exists'}. Latest suggestion: ${body.latestSuggestedNumber}`;
         } else {
           finalError = body.message ?? (response.status === 409 ? 'Draft changed in another tab.' : 'Document could not be created.');
         }
+        const firstField = Object.keys(fieldErrors)[0];
+        if (firstField === 'requestedBillNumber') document.getElementById('bill_number')?.focus();
+        if (firstField === 'clientName') document.getElementById('client_name')?.focus();
         return;
       }
       createdBillId = body.billId;
@@ -428,8 +434,17 @@
   {#if finalError}
     <div class="banner banner-error" role="alert">
       <AlertCircle size={20} />
-      <span>{finalError}</span>
-      {#if createdBillId}<a href="/bills/{createdBillId}">Open document</a>{/if}
+      <div>
+        <span>{finalError}</span>
+        {#if Object.keys(fieldErrors).length > 0}
+          <ul class="field-error-list">
+            {#each [...new Set(Object.values(fieldErrors))] as message}
+              <li>{message}</li>
+            {/each}
+          </ul>
+        {/if}
+        {#if createdBillId}<a href="/bills/{createdBillId}">Open document</a>{/if}
+      </div>
     </div>
   {/if}
 
@@ -1156,6 +1171,16 @@
     background-color: var(--color-danger-bg);
     border: 1px solid var(--color-danger);
     color: oklch(0.85 0.15 25);
+  }
+
+  .field-error,
+  .field-error-list {
+    color: var(--color-danger);
+    font-size: var(--text-xs);
+  }
+
+  .field-error-list {
+    margin: var(--space-2) 0 0 var(--space-4);
   }
 
   /* ===================================================
