@@ -16,6 +16,8 @@
     Filter,
     Calendar,
     FileSpreadsheet,
+    FileDown,
+    Files,
     Download
   } from '@lucide/svelte';
 
@@ -309,6 +311,14 @@
 
                     <a href="/bills/{bill.id}/edit" class="action-btn edit-btn" title="Edit">
                       <Edit3 size={15} />
+                    </a>
+
+                    <a href="/api/bills/{bill.id}/pdf?mode=saved" class="action-btn pdf-btn" title="Download saved document as PDF" aria-label="Download {bill.bill_number} as PDF">
+                      <FileDown size={15} />
+                    </a>
+
+                    <a href="/api/bills/{bill.id}/pdf?mode=bundle" class="action-btn bundle-pdf-btn" title="Download full PDF bundle" aria-label="Download full PDF bundle for {bill.bill_number}">
+                      <Files size={15} />
                     </a>
 
                     <form method="POST" action="?/duplicateBill" use:enhance>
