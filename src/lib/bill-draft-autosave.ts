@@ -70,8 +70,8 @@ export function createBillDraftAutosave(options: BillDraftAutosaveOptions): Bill
   const createKey = options.createKey ?? (() => crypto.randomUUID());
   let draftKey = options.initialDraftKey ?? null;
   let revision = options.initialRevision ?? 0;
-  let generation = 0;
-  let acknowledgedGeneration = 0;
+  let generation = options.initialDraftKey ? 1 : 0;
+  let acknowledgedGeneration = options.initialDraftKey ? 1 : 0;
   let retryAttempt = 0;
   let timer: unknown = null;
   let inFlight: Promise<void> | null = null;

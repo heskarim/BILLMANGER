@@ -85,6 +85,27 @@ function setup(transport: DraftTransport) {
   return { scheduler, states, created, controller, setPayload: (value: BillDraftPayloadV1) => { current = value; } };
 }
 
+test('a restored draft starts acknowledged and flushes only after a new edit', async () => {
+  const scheduler = new FakeScheduler();
+  let calls = 0;
+  const controller = createBillDraftAutosave({
+    initialDraftKey: KEY,
+    initialRevision: 4,
+    getPayload: () => payload('Restored'),
+    transport: { save: async () => { calls += 1; return { revision: 5, updatedAt: 'now' }; } },
+    onState: () => {},
+    onDraftCreated: () => assert.fail('restored drafts must not create a key'),
+    scheduler
+  });
+  assert.equal(controller.hasPendingChanges(), false);
+  await controller.flush();
+  assert.equal(calls, 0);
+  controller.markMeaningfulChange();
+  await controller.flush();
+  assert.equal(calls, 1);
+  assert.equal(controller.getRevision(), 5);
+});
+
 test('does not request or create a key before the first meaningful change', async () => {
   let calls = 0;
   const context = setup({ save: async () => { calls += 1; return { revision: 1, updatedAt: 'now' }; } });

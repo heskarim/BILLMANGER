@@ -255,6 +255,13 @@ export function createDraftStore(database: Database.Database): DraftStore {
           const existing = database.prepare('SELECT id FROM bills WHERE source_draft_key = ?').get(input.draftKey) as { id: number } | undefined;
           if (existing) return { billId: existing.id, alreadyFinalized: true };
         }
+        if (error instanceof Error && error.message.includes('UNIQUE constraint failed: bills.bill_number')) {
+          throw new DraftValidationError(
+            'Document number already exists',
+            { requestedBillNumber: 'Document number already exists' },
+            latestSuggestedNumber(database)
+          );
+        }
         throw error;
       }
     }
