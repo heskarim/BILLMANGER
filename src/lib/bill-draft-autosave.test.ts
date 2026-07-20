@@ -192,6 +192,22 @@ test('flush cancels debounce and waits for latest dirty state', async () => {
   assert.equal(context.controller.hasPendingChanges(), false);
 });
 
+test('a new edit resets the bounded transient retry sequence', async () => {
+  let calls = 0;
+  const context = setup({ save: async () => {
+    calls += 1;
+    if (calls <= 4) throw new DraftTransportTransient('offline');
+    return { revision: 1, updatedAt: 'now' };
+  } });
+  context.controller.markMeaningfulChange();
+  await context.scheduler.advance(9000);
+  assert.equal(context.states.at(-1), 'failed');
+  context.controller.markMeaningfulChange();
+  await context.scheduler.advance(1000);
+  assert.equal(calls, 5);
+  assert.equal(context.states.at(-1), 'saved');
+});
+
 test('retry restarts a failed dirty generation and dispose cancels mutations', async () => {
   let calls = 0;
   const context = setup({ save: async () => {

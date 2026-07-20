@@ -1,6 +1,16 @@
 <script lang="ts">
-  import { enhance } from '$app/forms';
+  import { beforeNavigate, goto } from '$app/navigation';
+  import { onDestroy } from 'svelte';
   import { numberToWordsFrench } from '$lib/utils/frenchWords';
+  import type { BillDraftPayloadV1, DraftSaveState } from '$lib/bill-drafts';
+  import {
+    createBillDraftAutosave,
+    DraftTransportConflict,
+    DraftTransportPermanent,
+    DraftTransportTransient,
+    type DraftTransport
+  } from '$lib/bill-draft-autosave';
+  import DraftSaveStatus from '$lib/components/DraftSaveStatus.svelte';
   import { 
     Plus, 
     Trash2, 
@@ -14,16 +24,18 @@
     Hash
   } from '@lucide/svelte';
 
-  let { data, form } = $props();
+  let { data } = $props();
 
   // ----------------------------------------------------
   // FORM BINDINGS & REACTIVE STATE
   // ----------------------------------------------------
-  let type = $state<'facture' | 'proforma' | 'livraison'>('facture');
-  let billNumber = $state(data.defaultNumber || '');
-  let date = $state(''); // Empty by default
-  let contractNumber = $state('');
-  let contractDate = $state('');
+  const restoredDraft = data.draft;
+  const restoredPayload = restoredDraft?.payload;
+  let type = $state<'facture' | 'proforma' | 'livraison'>(restoredPayload?.type ?? 'facture');
+  let billNumber = $state(restoredPayload?.requestedBillNumber ?? data.defaultNumber ?? '');
+  let date = $state(restoredPayload?.date ?? '');
+  let contractNumber = $state(restoredPayload?.contractNumber ?? '');
+  let contractDate = $state(restoredPayload?.contractDate ?? '');
 
   let showPreview = $state(false);
 
@@ -42,9 +54,9 @@
   }
 
   // Client Details
-  let clientName = $state('');
-  let clientCode = $state('');
-  let clientAddress = $state('');
+  let clientName = $state(restoredPayload?.clientName ?? '');
+  let clientCode = $state(restoredPayload?.clientCode ?? '');
+  let clientAddress = $state(restoredPayload?.clientAddress ?? '');
 
   // Client suggestions
   let clientSuggestions = $state<any[]>([]);
@@ -61,9 +73,20 @@
     total_price: number;
   }
 
-  let items = $state<LineItem[]>([
-    { id: Math.random().toString(), product_name: '', unit: 'UN', quantity: 1, unit_price: 0, total_price: 0 }
-  ]);
+  function createBlankItem(): LineItem {
+    return { id: crypto.randomUUID(), product_name: '', unit: 'UN', quantity: 1, unit_price: 0, total_price: 0 };
+  }
+
+  let items = $state<LineItem[]>(restoredPayload
+    ? restoredPayload.items.map((item) => ({
+        id: item.rowKey,
+        product_name: item.productName,
+        unit: item.unit,
+        quantity: item.quantity,
+        unit_price: item.unitPrice,
+        total_price: Number((item.quantity * item.unitPrice).toFixed(2))
+      }))
+    : [createBlankItem()]);
 
   // Product Autocomplete
   let productSuggestions = $state<any[]>([]);
@@ -71,8 +94,8 @@
   let focusedRowIndex = $state<number | null>(null);
 
   // TVA controls
-  let hasTva = $state(true); // Apply TVA (19%) by default
-  let tvaRate = $state(19);
+  let hasTva = $state(restoredPayload?.hasTva ?? true);
+  let tvaRate = $state(restoredPayload?.tvaRate ?? 19);
 
   // Calculations
   let subtotalHT = $derived(
@@ -91,21 +114,165 @@
   );
 
   let saving = $state(false);
-  let notes = $state('');
+  let notes = $state(restoredPayload?.notes ?? '');
+  let draftState = $state<DraftSaveState>(restoredDraft
+    ? { kind: 'saved', updatedAt: restoredDraft.updatedAt }
+    : { kind: 'idle' });
+  let finalError = $state('');
+  let fieldErrors = $state<Record<string, string>>({});
+  let createdBillId = $state<number | null>(null);
+
+  function payloadFromForm(): BillDraftPayloadV1 {
+    return {
+      version: 1,
+      type,
+      requestedBillNumber: billNumber,
+      date,
+      contractNumber,
+      contractDate,
+      clientName,
+      clientCode,
+      clientAddress,
+      hasTva,
+      tvaRate: Number(tvaRate),
+      notes,
+      items: items.map((item) => ({
+        rowKey: item.id,
+        productName: item.product_name,
+        unit: item.unit,
+        quantity: Number(item.quantity),
+        unitPrice: Number(item.unit_price)
+      }))
+    };
+  }
+
+  const draftTransport: DraftTransport = {
+    async save({ draftKey, expectedRevision, payload, keepalive }) {
+      let response: Response;
+      try {
+        response = await fetch(`/api/bill-drafts/${encodeURIComponent(draftKey)}`, {
+          method: 'PUT',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ expectedRevision, payload }),
+          keepalive
+        });
+      } catch {
+        throw new DraftTransportTransient('Draft save failed');
+      }
+      const body = await response.json().catch(() => ({}));
+      if (response.status === 409) throw new DraftTransportConflict(body.serverRevision ?? expectedRevision);
+      if (response.status >= 500 || response.status === 429) throw new DraftTransportTransient('Draft save failed');
+      if (!response.ok) throw new DraftTransportPermanent(body.message ?? 'Draft data is invalid');
+      return body;
+    }
+  };
+
+  const autosave = createBillDraftAutosave({
+    initialDraftKey: restoredDraft?.draftKey,
+    initialRevision: restoredDraft?.revision,
+    getPayload: payloadFromForm,
+    transport: draftTransport,
+    onState: (state) => { draftState = state; },
+    onDraftCreated: (draftKey) => {
+      const url = new URL(window.location.href);
+      url.searchParams.set('draft', draftKey);
+      history.replaceState(history.state, '', `${url.pathname}${url.search}`);
+    }
+  });
+
+  function markMeaningfulChange(): void {
+    finalError = '';
+    fieldErrors = {};
+    autosave.markMeaningfulChange();
+  }
+
+  let resumedNavigation = false;
+  beforeNavigate((navigation) => {
+    if (resumedNavigation || !autosave.hasPendingChanges() || !navigation.to?.url) return;
+    const destination = `${navigation.to.url.pathname}${navigation.to.url.search}${navigation.to.url.hash}`;
+    navigation.cancel();
+    void autosave.flush().then(async () => {
+      resumedNavigation = true;
+      try {
+        await goto(destination);
+      } finally {
+        resumedNavigation = false;
+      }
+    }).catch(() => {});
+  });
+
+  function handlePageHide(): void {
+    autosave.bestEffortKeepalive();
+  }
+
+  function handleBeforeUnload(event: BeforeUnloadEvent): void {
+    if (!autosave.hasPendingChanges()) return;
+    event.preventDefault();
+    event.returnValue = '';
+  }
+
+  window.addEventListener('pagehide', handlePageHide);
+  window.addEventListener('beforeunload', handleBeforeUnload);
+  onDestroy(() => {
+    window.removeEventListener('pagehide', handlePageHide);
+    window.removeEventListener('beforeunload', handleBeforeUnload);
+    autosave.dispose();
+  });
+
+  async function finalizeDraft(): Promise<void> {
+    if (saving) return;
+    saving = true;
+    finalError = '';
+    fieldErrors = {};
+    createdBillId = null;
+    try {
+      if (!autosave.getDraftKey()) autosave.markMeaningfulChange();
+      await autosave.flush();
+      const draftKey = autosave.getDraftKey();
+      if (!draftKey) throw new Error('Draft could not be created');
+      const response = await fetch(`/api/bill-drafts/${encodeURIComponent(draftKey)}/finalize`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ expectedRevision: autosave.getRevision() })
+      });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        fieldErrors = body.fields ?? {};
+        if (body.latestSuggestedNumber) {
+          finalError = `${body.message ?? 'Document number already exists'}. Latest suggestion: ${body.latestSuggestedNumber}`;
+        } else {
+          finalError = body.message ?? (response.status === 409 ? 'Draft changed in another tab.' : 'Document could not be created.');
+        }
+        return;
+      }
+      createdBillId = body.billId;
+      resumedNavigation = true;
+      try {
+        await goto(`/bills/${body.billId}`);
+      } catch {
+        finalError = 'Document created. Use the link below to open it.';
+      }
+    } catch (error) {
+      finalError = error instanceof Error ? error.message : 'Document could not be created.';
+    } finally {
+      saving = false;
+    }
+  }
 
   // ----------------------------------------------------
   // SWITCH BILL TYPE NUMBER AUTO-FETCH
   // ----------------------------------------------------
   async function handleTypeChange(newType: 'facture' | 'proforma' | 'livraison') {
+    if (newType === type) return;
     type = newType;
     try {
       const response = await fetch(`/api/next-bill-number?type=${newType}`);
       const result = await response.json();
-      if (result.number) {
-        billNumber = result.number;
-      }
+      if (result.number) billNumber = result.number;
     } catch (err) {
       console.error('Failed to fetch next number:', err);
+    } finally {
+      markMeaningfulChange();
     }
   }
 
@@ -135,6 +302,7 @@
     clientAddress = client.address;
     clientSuggestions = [];
     showClientDropdown = false;
+    markMeaningfulChange();
   }
 
   function handleClientKeydown(e: KeyboardEvent) {
@@ -180,9 +348,9 @@
     items[rowIndex].unit = product.unit;
     items[rowIndex].unit_price = product.default_price;
     updateRowTotal(rowIndex);
-    
     productSuggestions = [];
     focusedRowIndex = null;
+    markMeaningfulChange();
   }
 
   function handleProductKeydown(e: KeyboardEvent, rowIndex: number) {
@@ -208,18 +376,17 @@
   // ITEMS LIST MANAGEMENT
   // ----------------------------------------------------
   function addRow() {
-    items = [
-      ...items,
-      { id: Math.random().toString(), product_name: '', unit: 'UN', quantity: 1, unit_price: 0, total_price: 0 }
-    ];
+    items = [...items, createBlankItem()];
+    markMeaningfulChange();
   }
 
   function removeRow(index: number) {
     if (items.length > 1) {
       items = items.filter((_, i) => i !== index);
     } else {
-      items = [{ id: Math.random().toString(), product_name: '', unit: 'UN', quantity: 1, unit_price: 0, total_price: 0 }];
+      items = [createBlankItem()];
     }
+    markMeaningfulChange();
   }
 
   function updateRowTotal(index: number) {
@@ -255,21 +422,16 @@
     </div>
   </header>
 
-  {#if form?.error}
-    <div class="banner banner-error">
+  {#if finalError}
+    <div class="banner banner-error" role="alert">
       <AlertCircle size={20} />
-      <span>{form.error}</span>
+      <span>{finalError}</span>
+      {#if createdBillId}<a href="/bills/{createdBillId}">Open document</a>{/if}
     </div>
   {/if}
 
   <div class="editor-workspace">
-    <form method="POST" action="?/createBill" use:enhance={() => {
-      saving = true;
-      return async ({ update }) => {
-        await update();
-        saving = false;
-      };
-    }} class="editor-form">
+    <form onsubmit={(event) => { event.preventDefault(); void finalizeDraft(); }} class="editor-form">
     
     <!-- 1. DOCUMENT TYPE SELECTOR CARDS -->
     <div class="type-selector-grid">
@@ -342,10 +504,13 @@
             id="bill_number" 
             name="bill_number" 
             class="input-field" 
-            bind:value={billNumber} 
+            bind:value={billNumber}
+            oninput={markMeaningfulChange}
+            aria-invalid={Boolean(fieldErrors.requestedBillNumber)}
             placeholder="e.g. 2025-0009"
             required 
           />
+          {#if fieldErrors.requestedBillNumber}<span class="field-error">{fieldErrors.requestedBillNumber}</span>{/if}
         </div>
 
         <div class="form-group">
@@ -355,7 +520,8 @@
             id="date" 
             name="date" 
             class="input-field" 
-            bind:value={date} 
+            bind:value={date}
+            oninput={markMeaningfulChange}
           />
         </div>
 
@@ -366,7 +532,8 @@
             id="contract_number" 
             name="contract_number" 
             class="input-field" 
-            bind:value={contractNumber} 
+            bind:value={contractNumber}
+            oninput={markMeaningfulChange}
             placeholder="e.g. 16"
           />
         </div>
@@ -378,7 +545,8 @@
             id="contract_date" 
             name="contract_date" 
             class="input-field" 
-            bind:value={contractDate} 
+            bind:value={contractDate}
+            oninput={markMeaningfulChange}
           />
         </div>
       </div>
@@ -396,14 +564,16 @@
             name="client_name" 
             class="input-field" 
             bind:value={clientName} 
-            oninput={() => searchClientsQuery(clientName)}
+            oninput={() => { markMeaningfulChange(); void searchClientsQuery(clientName); }}
             onkeydown={handleClientKeydown}
             onfocus={() => { if (clientSuggestions.length > 0) showClientDropdown = true; }}
             onblur={() => setTimeout(() => showClientDropdown = false, 200)}
             placeholder="Type customer name..."
             autocomplete="off"
+            aria-invalid={Boolean(fieldErrors.clientName)}
             required 
           />
+          {#if fieldErrors.clientName}<span class="field-error">{fieldErrors.clientName}</span>{/if}
           
           <!-- Client Autocomplete Dropdown -->
           {#if showClientDropdown && clientSuggestions.length > 0}
@@ -433,7 +603,8 @@
             id="client_code" 
             name="client_code" 
             class="input-field" 
-            bind:value={clientCode} 
+            bind:value={clientCode}
+            oninput={markMeaningfulChange}
             placeholder="e.g. C001"
           />
         </div>
@@ -445,7 +616,8 @@
             id="client_address" 
             name="client_address" 
             class="input-field" 
-            bind:value={clientAddress} 
+            bind:value={clientAddress}
+            oninput={markMeaningfulChange}
             placeholder="e.g. Tamenrasset, 10000, Algérie"
           />
         </div>
@@ -488,7 +660,7 @@
                     type="text" 
                     class="input-field table-input" 
                     bind:value={item.product_name} 
-                    oninput={() => searchProductsQuery(item.product_name, index)}
+                    oninput={() => { markMeaningfulChange(); void searchProductsQuery(item.product_name, index); }}
                     onkeydown={(e) => handleProductKeydown(e, index)}
                     onfocus={() => searchProductsQuery(item.product_name, index)}
                     onblur={() => setTimeout(() => { if (focusedRowIndex === index) focusedRowIndex = null; }, 200)}
@@ -529,7 +701,8 @@
                   <input 
                     type="text" 
                     class="input-field table-input text-center" 
-                    bind:value={item.unit} 
+                    bind:value={item.unit}
+                    oninput={markMeaningfulChange}
                     placeholder="UN" 
                   />
                 </td>
@@ -539,8 +712,8 @@
                     type="number" 
                     step="any"
                     class="input-field table-input text-right" 
-                    bind:value={item.quantity} 
-                    oninput={() => updateRowTotal(index)}
+                    bind:value={item.quantity}
+                    oninput={() => { updateRowTotal(index); markMeaningfulChange(); }}
                     min="0.0001"
                     required 
                   />
@@ -552,8 +725,8 @@
                       type="number" 
                       step="any"
                       class="input-field table-input text-right" 
-                      bind:value={item.unit_price} 
-                      oninput={() => updateRowTotal(index)}
+                      bind:value={item.unit_price}
+                      oninput={() => { updateRowTotal(index); markMeaningfulChange(); }}
                       min="0"
                       required 
                     />
@@ -598,7 +771,7 @@
           <!-- TVA Toggler -->
           <div class="total-row border-row">
             <label class="tva-label-toggle">
-              <input type="checkbox" bind:checked={hasTva} />
+              <input type="checkbox" bind:checked={hasTva} onchange={markMeaningfulChange} />
               <span>Apply TVA (19%)</span>
             </label>
             {#if hasTva}
@@ -626,6 +799,7 @@
             id="notes_field"
             class="input-field notes-textarea"
             bind:value={notes}
+            oninput={markMeaningfulChange}
             placeholder="Ex: Livraison effectuée dans les délais convenus. Matériel en bon état..."
             rows="3"
           ></textarea>
@@ -635,6 +809,11 @@
 
     <!-- 7. SUBMIT BUTTONS -->
     <div class="form-actions">
+      <DraftSaveStatus
+        state={draftState}
+        onRetry={() => autosave.retry()}
+        onReload={() => location.reload()}
+      />
       <a href="/" class="btn btn-secondary">Cancel</a>
       <button 
         type="submit" 

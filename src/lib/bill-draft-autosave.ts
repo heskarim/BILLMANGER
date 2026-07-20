@@ -195,13 +195,25 @@ export function createBillDraftAutosave(options: BillDraftAutosaveOptions): Bill
       waiters.clear();
     },
     bestEffortKeepalive() {
-      if (disposed || conflict || !draftKey || generation <= acknowledgedGeneration) return;
-      void options.transport.save({
+      if (disposed || conflict || inFlight || !draftKey || generation <= acknowledgedGeneration) return;
+      const sentGeneration = generation;
+      inFlight = options.transport.save({
         draftKey,
         expectedRevision: revision,
         payload: options.getPayload(),
         keepalive: true
-      }).catch(() => {});
+      }).then((result) => {
+        revision = result.revision;
+        acknowledgedGeneration = Math.max(acknowledgedGeneration, sentGeneration);
+        terminal = null;
+        retryAttempt = 0;
+        emit({ kind: 'saved', updatedAt: result.updatedAt });
+      }).catch(() => {
+        // Page-hide persistence is best effort; foreground retry remains available.
+      }).finally(() => {
+        inFlight = null;
+        settleWaiters();
+      });
     },
     getDraftKey: () => draftKey,
     getRevision: () => revision,
