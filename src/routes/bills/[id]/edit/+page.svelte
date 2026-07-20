@@ -663,16 +663,6 @@
 
   </form>
 
-  <button
-    type="button"
-    class="btn btn-primary floating-add-row no-print"
-    onclick={addRow}
-    aria-label="Add another line item"
-  >
-    <Plus size={18} />
-    <span>Add Row</span>
-  </button>
-
   {#if showPreview}
     <!-- Live Preview Panel on the Right -->
     <aside class="live-preview-panel no-print">
@@ -1233,17 +1223,6 @@
     box-shadow: 0 8px 18px oklch(0 0 0 / 0.08);
   }
 
-  .floating-add-row {
-    display: inline-flex;
-    position: fixed;
-    right: var(--space-6);
-    bottom: var(--space-6);
-    z-index: 120;
-    border-radius: var(--border-radius-pill);
-    box-shadow: var(--shadow-lg), 0 0 0 4px var(--color-accent-glow);
-  }
-
-
   .items-header .section-title {
     border-bottom: none;
     padding-bottom: 0;
@@ -1261,11 +1240,6 @@
   }
 
   @media (max-width: 900px) {
-    .floating-add-row {
-      right: var(--space-4);
-      bottom: var(--space-4);
-    }
-
     .items-header-sticky {
       top: 0;
       margin-left: calc(-1 * var(--space-3));
