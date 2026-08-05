@@ -4,6 +4,7 @@
   import { 
     Plus, 
     Trash2, 
+    GripVertical,
     Receipt, 
     FileText, 
     Truck, 
@@ -79,6 +80,9 @@
   let productSuggestions = $state<any[]>([]);
   let activeProductIndex = $state(-1);
   let focusedRowIndex = $state<number | null>(null);
+  let draggedRowIndex = $state<number | null>(null);
+  let dropRowIndex = $state<number | null>(null);
+  let dropPosition = $state<'before' | 'after' | null>(null);
 
   // TVA controls
   let hasTva = $state(originalBill.tva_rate > 0);
@@ -233,6 +237,61 @@
       items = items.filter((_, i) => i !== index);
     } else {
       items = [{ id: Math.random().toString(), product_name: '', unit: 'UN', quantity: 1, unit_price: 0, total_price: 0 }];
+    }
+  }
+
+  function resetRowDrag(): void {
+    draggedRowIndex = null;
+    dropRowIndex = null;
+    dropPosition = null;
+  }
+
+  function moveRow(fromIndex: number, toIndex: number): void {
+    if (fromIndex === toIndex || fromIndex < 0 || fromIndex >= items.length || toIndex < 0 || toIndex >= items.length) return;
+    const reordered = [...items];
+    const [movedItem] = reordered.splice(fromIndex, 1);
+    reordered.splice(toIndex, 0, movedItem);
+    items = reordered;
+    focusedRowIndex = null;
+    productSuggestions = [];
+  }
+
+  function handleRowDragStart(event: DragEvent, index: number): void {
+    draggedRowIndex = index;
+    event.dataTransfer?.setData('text/plain', items[index].id);
+    if (event.dataTransfer) event.dataTransfer.effectAllowed = 'move';
+  }
+
+  function handleRowDragOver(event: DragEvent, index: number): void {
+    event.preventDefault();
+    if (event.dataTransfer) event.dataTransfer.dropEffect = 'move';
+    const row = event.currentTarget as HTMLTableRowElement;
+    const bounds = row.getBoundingClientRect();
+    dropRowIndex = index;
+    dropPosition = event.clientY < bounds.top + bounds.height / 2 ? 'before' : 'after';
+  }
+
+  function handleRowDrop(event: DragEvent, index: number): void {
+    event.preventDefault();
+    const draggedId = event.dataTransfer?.getData('text/plain');
+    const fromIndex = draggedRowIndex ?? items.findIndex((item) => item.id === draggedId);
+    const row = event.currentTarget as HTMLTableRowElement;
+    const bounds = row.getBoundingClientRect();
+    const position = event.clientY < bounds.top + bounds.height / 2 ? 'before' : 'after';
+    let toIndex = index + (position === 'after' ? 1 : 0);
+    if (fromIndex < toIndex) toIndex -= 1;
+    toIndex = Math.max(0, Math.min(items.length - 1, toIndex));
+    moveRow(fromIndex, toIndex);
+    resetRowDrag();
+  }
+
+  function handleRowReorderKeydown(event: KeyboardEvent, index: number): void {
+    if (event.key === 'ArrowUp' && index > 0) {
+      event.preventDefault();
+      moveRow(index, index - 1);
+    } else if (event.key === 'ArrowDown' && index < items.length - 1) {
+      event.preventDefault();
+      moveRow(index, index + 1);
     }
   }
 
@@ -482,6 +541,7 @@
         <table class="items-table">
           <thead>
             <tr>
+              <th class="reorder-column">Order</th>
               <th style="width: 60px;">N°</th>
               <th>Product / Description</th>
               <th style="width: 100px;">Unit</th>
@@ -495,7 +555,28 @@
           </thead>
           <tbody>
             {#each items as item, index (item.id)}
-              <tr class="item-row">
+              <tr
+                class="item-row"
+                class:dragging={draggedRowIndex === index}
+                class:drop-before={dropRowIndex === index && dropPosition === 'before' && draggedRowIndex !== index}
+                class:drop-after={dropRowIndex === index && dropPosition === 'after' && draggedRowIndex !== index}
+                ondragover={(event) => handleRowDragOver(event, index)}
+                ondrop={(event) => handleRowDrop(event, index)}
+              >
+                <td class="reorder-cell">
+                  <button
+                    type="button"
+                    class="drag-handle"
+                    draggable="true"
+                    ondragstart={(event) => handleRowDragStart(event, index)}
+                    ondragend={resetRowDrag}
+                    onkeydown={(event) => handleRowReorderKeydown(event, index)}
+                    aria-label={`Move row ${index + 1}. Drag, or use the up and down arrow keys.`}
+                    title="Drag to reorder; arrow keys also work"
+                  >
+                    <GripVertical size={18} />
+                  </button>
+                </td>
                 <td class="row-num-cell">{index + 1}</td>
                 
                 <!-- Product Autocomplete Cell -->
@@ -1293,8 +1374,59 @@
     vertical-align: middle;
   }
 
+  .reorder-column {
+    width: 56px;
+    text-align: center;
+  }
+
+  .reorder-cell {
+    width: 56px;
+    text-align: center;
+  }
+
+  .drag-handle {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 34px;
+    height: 34px;
+    padding: 0;
+    border: 1px solid transparent;
+    border-radius: var(--border-radius-sm);
+    background: transparent;
+    color: var(--text-muted);
+    cursor: grab;
+    transition: color var(--duration-fast) var(--ease-out),
+                background-color var(--duration-fast) var(--ease-out),
+                border-color var(--duration-fast) var(--ease-out);
+  }
+
+  .drag-handle:hover,
+  .drag-handle:focus-visible {
+    color: var(--color-accent);
+    background: var(--color-accent-subtle);
+    border-color: var(--color-accent);
+    outline: none;
+  }
+
+  .drag-handle:active {
+    cursor: grabbing;
+  }
+
   .item-row {
     transition: background-color var(--duration-fast) var(--ease-out);
+  }
+
+  .item-row.dragging {
+    opacity: 0.45;
+  }
+
+  .item-row.drop-before td {
+    box-shadow: inset 0 3px 0 var(--color-accent);
+  }
+
+  .item-row.drop-after td {
+    box-shadow: inset 0 -3px 0 var(--color-accent);
   }
 
   .item-row:hover {
