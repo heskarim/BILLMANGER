@@ -10,6 +10,11 @@
 		"prepare": "svelte-kit sync || echo ''",
 		"check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
 		"check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
+		"test:drafts": "tsx --test src/lib/bill-drafts.test.ts src/lib/server/bill-drafts.test.ts src/lib/bill-draft-autosave.test.ts && tsx 'src/routes/api/bill-drafts/[draftKey]/draft-api.test.ts'",
+		"test:drafts:contracts": "tsx --test src/lib/bill-drafts.test.ts",
+		"test:drafts:repository": "tsx --test src/lib/server/bill-drafts.test.ts",
+		"test:drafts:controller": "tsx --test src/lib/bill-draft-autosave.test.ts",
+		"test:drafts:api": "tsx 'src/routes/api/bill-drafts/[draftKey]/draft-api.test.ts'",
 		"seed:demo": "npx tsx scripts/seed-example-bill.ts"
 	},
 	"devDependencies": {
@@ -26,7 +31,9 @@
 	"dependencies": {
 		"@lucide/svelte": "^1.17.0",
 		"better-sqlite3": "^12.10.0",
+		"jszip": "^3.10.1",
 		"lucide-svelte": "^1.0.1",
+		"playwright": "^1.61.1",
 		"xlsx": "^0.18.5",
 		"xlsx-js-style": "^1.2.0"
 	}

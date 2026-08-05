@@ -1,29 +1,42 @@
 <script lang="ts">
-  import { enhance } from '$app/forms';
+  import { beforeNavigate, goto } from '$app/navigation';
+  import { onDestroy, onMount } from 'svelte';
   import { numberToWordsFrench } from '$lib/utils/frenchWords';
-  import { 
-    Plus, 
-    Trash2, 
-    ChevronDown, 
-    Receipt, 
-    FileText, 
-    Truck, 
+  import type { BillDraftPayloadV1, DraftSaveState } from '$lib/bill-drafts';
+  import {
+    createBillDraftAutosave,
+    DraftTransportConflict,
+    DraftTransportPermanent,
+    DraftTransportTransient,
+    type DraftTransport
+  } from '$lib/bill-draft-autosave';
+  import DraftSaveStatus from '$lib/components/DraftSaveStatus.svelte';
+  import {
+    Plus,
+    Trash2,
+    GripVertical,
+    ChevronDown,
+    Receipt,
+    FileText,
+    Truck,
     AlertCircle,
     User,
     Calendar,
     Hash
   } from '@lucide/svelte';
 
-  let { data, form } = $props();
+  let { data } = $props();
 
   // ----------------------------------------------------
   // FORM BINDINGS & REACTIVE STATE
   // ----------------------------------------------------
-  let type = $state<'facture' | 'proforma' | 'livraison'>('facture');
-  let billNumber = $state(data.defaultNumber || '');
-  let date = $state(''); // Empty by default
-  let contractNumber = $state('');
-  let contractDate = $state('');
+  const restoredDraft = data.draft;
+  const restoredPayload = restoredDraft?.payload;
+  let type = $state<'facture' | 'proforma' | 'livraison'>(restoredPayload?.type ?? 'facture');
+  let billNumber = $state(restoredPayload?.requestedBillNumber ?? data.defaultNumber ?? '');
+  let date = $state(restoredPayload?.date ?? '');
+  let contractNumber = $state(restoredPayload?.contractNumber ?? '');
+  let contractDate = $state(restoredPayload?.contractDate ?? '');
 
   let showPreview = $state(false);
 
@@ -42,9 +55,9 @@
   }
 
   // Client Details
-  let clientName = $state('');
-  let clientCode = $state('');
-  let clientAddress = $state('');
+  let clientName = $state(restoredPayload?.clientName ?? '');
+  let clientCode = $state(restoredPayload?.clientCode ?? '');
+  let clientAddress = $state(restoredPayload?.clientAddress ?? '');
 
   // Client suggestions
   let clientSuggestions = $state<any[]>([]);
@@ -61,18 +74,32 @@
     total_price: number;
   }
 
-  let items = $state<LineItem[]>([
-    { id: Math.random().toString(), product_name: '', unit: 'UN', quantity: 1, unit_price: 0, total_price: 0 }
-  ]);
+  function createBlankItem(): LineItem {
+    return { id: crypto.randomUUID(), product_name: '', unit: 'UN', quantity: 1, unit_price: 0, total_price: 0 };
+  }
+
+  let items = $state<LineItem[]>(restoredPayload
+    ? restoredPayload.items.map((item) => ({
+        id: item.rowKey,
+        product_name: item.productName,
+        unit: item.unit,
+        quantity: item.quantity,
+        unit_price: item.unitPrice,
+        total_price: Number((item.quantity * item.unitPrice).toFixed(2))
+      }))
+    : [createBlankItem()]);
 
   // Product Autocomplete
   let productSuggestions = $state<any[]>([]);
   let activeProductIndex = $state(-1);
   let focusedRowIndex = $state<number | null>(null);
+  let draggedRowIndex = $state<number | null>(null);
+  let dropRowIndex = $state<number | null>(null);
+  let dropPosition = $state<'before' | 'after' | null>(null);
 
   // TVA controls
-  let hasTva = $state(true); // Apply TVA (19%) by default
-  let tvaRate = $state(19);
+  let hasTva = $state(restoredPayload?.hasTva ?? true);
+  let tvaRate = $state(restoredPayload?.tvaRate ?? 19);
 
   // Calculations
   let subtotalHT = $derived(
@@ -84,28 +111,181 @@
   let totalTTC = $derived(
     subtotalHT
   );
-  
+
   // Dynamic spelling in French words
   let spelledAmount = $derived(
     numberToWordsFrench(type === 'livraison' ? 0 : totalTTC)
   );
 
   let saving = $state(false);
-  let notes = $state('');
+  let notes = $state(restoredPayload?.notes ?? '');
+  let draftState = $state<DraftSaveState>(restoredDraft
+    ? { kind: 'saved', updatedAt: restoredDraft.updatedAt }
+    : { kind: 'idle' });
+  let finalError = $state('');
+  let fieldErrors = $state<Record<string, string>>({});
+  let createdBillId = $state<number | null>(null);
+
+  function payloadFromForm(): BillDraftPayloadV1 {
+    return {
+      version: 1,
+      type,
+      requestedBillNumber: billNumber,
+      date,
+      contractNumber,
+      contractDate,
+      clientName,
+      clientCode,
+      clientAddress,
+      hasTva,
+      tvaRate: Number(tvaRate),
+      notes,
+      items: items.map((item) => ({
+        rowKey: item.id,
+        productName: item.product_name,
+        unit: item.unit,
+        quantity: Number(item.quantity),
+        unitPrice: Number(item.unit_price)
+      }))
+    };
+  }
+
+  const draftTransport: DraftTransport = {
+    async save({ draftKey, expectedRevision, payload, keepalive }) {
+      let response: Response;
+      try {
+        response = await fetch(`/api/bill-drafts/${encodeURIComponent(draftKey)}`, {
+          method: 'PUT',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ expectedRevision, payload }),
+          keepalive
+        });
+      } catch {
+        throw new DraftTransportTransient('Draft save failed');
+      }
+      const body = await response.json().catch(() => ({}));
+      if (response.status === 409) throw new DraftTransportConflict(body.serverRevision ?? expectedRevision);
+      if (response.status >= 500 || response.status === 429) throw new DraftTransportTransient('Draft save failed');
+      if (!response.ok) throw new DraftTransportPermanent(body.message ?? 'Draft data is invalid');
+      return body;
+    }
+  };
+
+  const autosave = createBillDraftAutosave({
+    initialDraftKey: restoredDraft?.draftKey,
+    initialRevision: restoredDraft?.revision,
+    getPayload: payloadFromForm,
+    transport: draftTransport,
+    onState: (state) => { draftState = state; },
+    onDraftCreated: (draftKey) => {
+      const url = new URL(window.location.href);
+      url.searchParams.set('draft', draftKey);
+      history.replaceState(history.state, '', `${url.pathname}${url.search}`);
+    }
+  });
+
+  function markMeaningfulChange(): void {
+    finalError = '';
+    fieldErrors = {};
+    autosave.markMeaningfulChange();
+  }
+
+  let resumedNavigation = false;
+  beforeNavigate((navigation) => {
+    if (resumedNavigation || !autosave.hasPendingChanges() || !navigation.to?.url) return;
+    const destination = `${navigation.to.url.pathname}${navigation.to.url.search}${navigation.to.url.hash}`;
+    navigation.cancel();
+    void autosave.flush().then(async () => {
+      resumedNavigation = true;
+      try {
+        await goto(destination);
+      } finally {
+        resumedNavigation = false;
+      }
+    }).catch(() => {});
+  });
+
+  function handlePageHide(): void {
+    autosave.bestEffortKeepalive();
+  }
+
+  function handleBeforeUnload(event: BeforeUnloadEvent): void {
+    if (!autosave.hasPendingChanges()) return;
+    event.preventDefault();
+    event.returnValue = '';
+  }
+
+  onMount(() => {
+    window.addEventListener('pagehide', handlePageHide);
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => {
+      window.removeEventListener('pagehide', handlePageHide);
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+    };
+  });
+
+  onDestroy(() => autosave.dispose());
+
+  async function finalizeDraft(): Promise<void> {
+    if (saving) return;
+    saving = true;
+    finalError = '';
+    fieldErrors = {};
+    createdBillId = null;
+    try {
+      if (!autosave.getDraftKey()) autosave.markMeaningfulChange();
+      await autosave.flush();
+      const draftKey = autosave.getDraftKey();
+      if (!draftKey) throw new Error('Draft could not be created');
+      const response = await fetch(`/api/bill-drafts/${encodeURIComponent(draftKey)}/finalize`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ expectedRevision: autosave.getRevision() })
+      });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        fieldErrors = body.fields ?? {};
+        if (response.status === 409 && typeof body.serverRevision === 'number') {
+          draftState = { kind: 'conflict', serverRevision: body.serverRevision };
+        }
+        if (body.latestSuggestedNumber) {
+          finalError = `${body.message ?? 'Document number already exists'}. Latest suggestion: ${body.latestSuggestedNumber}`;
+        } else {
+          finalError = body.message ?? (response.status === 409 ? 'Draft changed in another tab.' : 'Document could not be created.');
+        }
+        const firstField = Object.keys(fieldErrors)[0];
+        if (firstField === 'requestedBillNumber') document.getElementById('bill_number')?.focus();
+        if (firstField === 'clientName') document.getElementById('client_name')?.focus();
+        return;
+      }
+      createdBillId = body.billId;
+      resumedNavigation = true;
+      try {
+        await goto(`/bills/${body.billId}`);
+      } catch {
+        finalError = 'Document created. Use the link below to open it.';
+      }
+    } catch (error) {
+      finalError = error instanceof Error ? error.message : 'Document could not be created.';
+    } finally {
+      saving = false;
+    }
+  }
 
   // ----------------------------------------------------
   // SWITCH BILL TYPE NUMBER AUTO-FETCH
   // ----------------------------------------------------
   async function handleTypeChange(newType: 'facture' | 'proforma' | 'livraison') {
+    if (newType === type) return;
     type = newType;
     try {
       const response = await fetch(`/api/next-bill-number?type=${newType}`);
       const result = await response.json();
-      if (result.number) {
-        billNumber = result.number;
-      }
+      if (result.number) billNumber = result.number;
     } catch (err) {
       console.error('Failed to fetch next number:', err);
+    } finally {
+      markMeaningfulChange();
     }
   }
 
@@ -135,6 +315,7 @@
     clientAddress = client.address;
     clientSuggestions = [];
     showClientDropdown = false;
+    markMeaningfulChange();
   }
 
   function handleClientKeydown(e: KeyboardEvent) {
@@ -180,9 +361,9 @@
     items[rowIndex].unit = product.unit;
     items[rowIndex].unit_price = product.default_price;
     updateRowTotal(rowIndex);
-    
     productSuggestions = [];
     focusedRowIndex = null;
+    markMeaningfulChange();
   }
 
   function handleProductKeydown(e: KeyboardEvent, rowIndex: number) {
@@ -208,17 +389,72 @@
   // ITEMS LIST MANAGEMENT
   // ----------------------------------------------------
   function addRow() {
-    items = [
-      ...items,
-      { id: Math.random().toString(), product_name: '', unit: 'UN', quantity: 1, unit_price: 0, total_price: 0 }
-    ];
+    items = [...items, createBlankItem()];
+    markMeaningfulChange();
   }
 
   function removeRow(index: number) {
     if (items.length > 1) {
       items = items.filter((_, i) => i !== index);
     } else {
-      items = [{ id: Math.random().toString(), product_name: '', unit: 'UN', quantity: 1, unit_price: 0, total_price: 0 }];
+      items = [createBlankItem()];
+    }
+    markMeaningfulChange();
+  }
+
+  function resetRowDrag(): void {
+    draggedRowIndex = null;
+    dropRowIndex = null;
+    dropPosition = null;
+  }
+
+  function moveRow(fromIndex: number, toIndex: number): void {
+    if (fromIndex === toIndex || fromIndex < 0 || fromIndex >= items.length || toIndex < 0 || toIndex >= items.length) return;
+    const reordered = [...items];
+    const [movedItem] = reordered.splice(fromIndex, 1);
+    reordered.splice(toIndex, 0, movedItem);
+    items = reordered;
+    focusedRowIndex = null;
+    productSuggestions = [];
+    markMeaningfulChange();
+  }
+
+  function handleRowDragStart(event: DragEvent, index: number): void {
+    draggedRowIndex = index;
+    event.dataTransfer?.setData('text/plain', items[index].id);
+    if (event.dataTransfer) event.dataTransfer.effectAllowed = 'move';
+  }
+
+  function handleRowDragOver(event: DragEvent, index: number): void {
+    event.preventDefault();
+    if (event.dataTransfer) event.dataTransfer.dropEffect = 'move';
+    const row = event.currentTarget as HTMLTableRowElement;
+    const bounds = row.getBoundingClientRect();
+    dropRowIndex = index;
+    dropPosition = event.clientY < bounds.top + bounds.height / 2 ? 'before' : 'after';
+  }
+
+  function handleRowDrop(event: DragEvent, index: number): void {
+    event.preventDefault();
+    const draggedId = event.dataTransfer?.getData('text/plain');
+    const fromIndex = draggedRowIndex ?? items.findIndex((item) => item.id === draggedId);
+    const row = event.currentTarget as HTMLTableRowElement;
+    const bounds = row.getBoundingClientRect();
+    const position = event.clientY < bounds.top + bounds.height / 2 ? 'before' : 'after';
+    let toIndex = index + (position === 'after' ? 1 : 0);
+    if (fromIndex < toIndex) toIndex -= 1;
+    toIndex = Math.max(0, Math.min(items.length - 1, toIndex));
+    moveRow(fromIndex, toIndex);
+    resetRowDrag();
+  }
+
+  function handleRowReorderKeydown(event: KeyboardEvent, index: number): void {
+    if (event.key === 'ArrowUp' && index > 0) {
+      event.preventDefault();
+      moveRow(index, index - 1);
+    } else if (event.key === 'ArrowDown' && index < items.length - 1) {
+      event.preventDefault();
+      moveRow(index, index + 1);
     }
   }
 
@@ -230,7 +466,7 @@
 </script>
 
 <div class="editor-container" class:with-preview={showPreview}>
-  
+
   <!-- Form Header -->
   <header class="page-header animate-in">
     <div class="header-icon">
@@ -241,9 +477,9 @@
       <p class="text-secondary">Draft standard invoices, proforma documents, or delivery shipment sheets.</p>
     </div>
     <div class="header-actions no-print">
-      <button 
-        type="button" 
-        class="btn btn-secondary" 
+      <button
+        type="button"
+        class="btn btn-secondary"
         onclick={() => showPreview = !showPreview}
       >
         {#if showPreview}
@@ -255,28 +491,32 @@
     </div>
   </header>
 
-  {#if form?.error}
-    <div class="banner banner-error">
+  {#if finalError}
+    <div class="banner banner-error" role="alert">
       <AlertCircle size={20} />
-      <span>{form.error}</span>
+      <div>
+        <span>{finalError}</span>
+        {#if Object.keys(fieldErrors).length > 0}
+          <ul class="field-error-list">
+            {#each [...new Set(Object.values(fieldErrors))] as message}
+              <li>{message}</li>
+            {/each}
+          </ul>
+        {/if}
+        {#if createdBillId}<a href="/bills/{createdBillId}">Open document</a>{/if}
+      </div>
     </div>
   {/if}
 
   <div class="editor-workspace">
-    <form method="POST" action="?/createBill" use:enhance={() => {
-      saving = true;
-      return async ({ update }) => {
-        await update();
-        saving = false;
-      };
-    }} class="editor-form">
-    
+    <form onsubmit={(event) => { event.preventDefault(); void finalizeDraft(); }} class="editor-form">
+
     <!-- 1. DOCUMENT TYPE SELECTOR CARDS -->
     <div class="type-selector-grid">
-      <button 
-        type="button" 
-        class="type-card" 
-        class:active={type === 'facture'} 
+      <button
+        type="button"
+        class="type-card"
+        class:active={type === 'facture'}
         onclick={() => handleTypeChange('facture')}
         style="--i: 0"
       >
@@ -289,10 +529,10 @@
         </div>
       </button>
 
-      <button 
-        type="button" 
-        class="type-card" 
-        class:active={type === 'proforma'} 
+      <button
+        type="button"
+        class="type-card"
+        class:active={type === 'proforma'}
         onclick={() => handleTypeChange('proforma')}
         style="--i: 1"
       >
@@ -305,10 +545,10 @@
         </div>
       </button>
 
-      <button 
-        type="button" 
-        class="type-card" 
-        class:active={type === 'livraison'} 
+      <button
+        type="button"
+        class="type-card"
+        class:active={type === 'livraison'}
         onclick={() => handleTypeChange('livraison')}
         style="--i: 2"
       >
@@ -337,48 +577,54 @@
       <div class="metadata-grid">
         <div class="form-group">
           <label for="bill_number"><Hash size={14} /> Document Number</label>
-          <input 
-            type="text" 
-            id="bill_number" 
-            name="bill_number" 
-            class="input-field" 
-            bind:value={billNumber} 
+          <input
+            type="text"
+            id="bill_number"
+            name="bill_number"
+            class="input-field"
+            bind:value={billNumber}
+            oninput={markMeaningfulChange}
+            aria-invalid={Boolean(fieldErrors.requestedBillNumber)}
             placeholder="e.g. 2025-0009"
-            required 
+            required
           />
+          {#if fieldErrors.requestedBillNumber}<span class="field-error">{fieldErrors.requestedBillNumber}</span>{/if}
         </div>
 
         <div class="form-group">
           <label for="date"><Calendar size={14} /> Date</label>
-          <input 
-            type="date" 
-            id="date" 
-            name="date" 
-            class="input-field" 
-            bind:value={date} 
+          <input
+            type="date"
+            id="date"
+            name="date"
+            class="input-field"
+            bind:value={date}
+            oninput={markMeaningfulChange}
           />
         </div>
 
         <div class="form-group">
           <label for="contract_number">Contract N° (Optional)</label>
-          <input 
-            type="text" 
-            id="contract_number" 
-            name="contract_number" 
-            class="input-field" 
-            bind:value={contractNumber} 
+          <input
+            type="text"
+            id="contract_number"
+            name="contract_number"
+            class="input-field"
+            bind:value={contractNumber}
+            oninput={markMeaningfulChange}
             placeholder="e.g. 16"
           />
         </div>
 
         <div class="form-group">
           <label for="contract_date">Contract Date (Optional)</label>
-          <input 
-            type="date" 
-            id="contract_date" 
-            name="contract_date" 
-            class="input-field" 
-            bind:value={contractDate} 
+          <input
+            type="date"
+            id="contract_date"
+            name="contract_date"
+            class="input-field"
+            bind:value={contractDate}
+            oninput={markMeaningfulChange}
           />
         </div>
       </div>
@@ -390,29 +636,31 @@
       <div class="client-grid">
         <div class="form-group relative">
           <label for="client_name"><User size={14} /> Client Name</label>
-          <input 
-            type="text" 
-            id="client_name" 
-            name="client_name" 
-            class="input-field" 
-            bind:value={clientName} 
-            oninput={() => searchClientsQuery(clientName)}
+          <input
+            type="text"
+            id="client_name"
+            name="client_name"
+            class="input-field"
+            bind:value={clientName}
+            oninput={() => { markMeaningfulChange(); void searchClientsQuery(clientName); }}
             onkeydown={handleClientKeydown}
             onfocus={() => { if (clientSuggestions.length > 0) showClientDropdown = true; }}
             onblur={() => setTimeout(() => showClientDropdown = false, 200)}
             placeholder="Type customer name..."
             autocomplete="off"
-            required 
+            aria-invalid={Boolean(fieldErrors.clientName)}
+            required
           />
-          
+          {#if fieldErrors.clientName}<span class="field-error">{fieldErrors.clientName}</span>{/if}
+
           <!-- Client Autocomplete Dropdown -->
           {#if showClientDropdown && clientSuggestions.length > 0}
             <ul class="autocomplete-dropdown">
               {#each clientSuggestions as client, idx}
                 <!-- svelte-ignore a11y_click_events_have_key_events -->
                 <!-- svelte-ignore a11y_no_noninteractive_element_to_interactive_role -->
-                <li 
-                  class="dropdown-item" 
+                <li
+                  class="dropdown-item"
                   class:highlight={idx === activeClientIndex}
                   onclick={() => selectClient(client)}
                   role="option"
@@ -428,24 +676,26 @@
 
         <div class="form-group">
           <label for="client_code">Client Code (Optional)</label>
-          <input 
-            type="text" 
-            id="client_code" 
-            name="client_code" 
-            class="input-field" 
-            bind:value={clientCode} 
+          <input
+            type="text"
+            id="client_code"
+            name="client_code"
+            class="input-field"
+            bind:value={clientCode}
+            oninput={markMeaningfulChange}
             placeholder="e.g. C001"
           />
         </div>
 
         <div class="form-group client-address-group">
           <label for="client_address">Client Address</label>
-          <input 
-            type="text" 
-            id="client_address" 
-            name="client_address" 
-            class="input-field" 
-            bind:value={clientAddress} 
+          <input
+            type="text"
+            id="client_address"
+            name="client_address"
+            class="input-field"
+            bind:value={clientAddress}
+            oninput={markMeaningfulChange}
             placeholder="e.g. Tamenrasset, 10000, Algérie"
           />
         </div>
@@ -466,6 +716,7 @@
         <table class="items-table">
           <thead>
             <tr>
+              <th class="reorder-column">Order</th>
               <th style="width: 60px;">N°</th>
               <th>Product / Description</th>
               <th style="width: 100px;">Unit</th>
@@ -479,16 +730,37 @@
           </thead>
           <tbody>
             {#each items as item, index (item.id)}
-              <tr class="item-row">
+              <tr
+                class="item-row"
+                class:dragging={draggedRowIndex === index}
+                class:drop-before={dropRowIndex === index && dropPosition === 'before' && draggedRowIndex !== index}
+                class:drop-after={dropRowIndex === index && dropPosition === 'after' && draggedRowIndex !== index}
+                ondragover={(event) => handleRowDragOver(event, index)}
+                ondrop={(event) => handleRowDrop(event, index)}
+              >
+                <td class="reorder-cell">
+                  <button
+                    type="button"
+                    class="drag-handle"
+                    draggable="true"
+                    ondragstart={(event) => handleRowDragStart(event, index)}
+                    ondragend={resetRowDrag}
+                    onkeydown={(event) => handleRowReorderKeydown(event, index)}
+                    aria-label={`Move row ${index + 1}. Drag, or use the up and down arrow keys.`}
+                    title="Drag to reorder; arrow keys also work"
+                  >
+                    <GripVertical size={18} />
+                  </button>
+                </td>
                 <td class="row-num-cell">{index + 1}</td>
-                
+
                 <!-- Product Autocomplete Cell -->
                 <td class="relative">
-                  <input 
-                    type="text" 
-                    class="input-field table-input" 
-                    bind:value={item.product_name} 
-                    oninput={() => searchProductsQuery(item.product_name, index)}
+                  <input
+                    type="text"
+                    class="input-field table-input"
+                    bind:value={item.product_name}
+                    oninput={() => { markMeaningfulChange(); void searchProductsQuery(item.product_name, index); }}
                     onkeydown={(e) => handleProductKeydown(e, index)}
                     onfocus={() => searchProductsQuery(item.product_name, index)}
                     onblur={() => setTimeout(() => { if (focusedRowIndex === index) focusedRowIndex = null; }, 200)}
@@ -503,8 +775,8 @@
                       {#each productSuggestions as prod, idx}
                         <!-- svelte-ignore a11y_click_events_have_key_events -->
                         <!-- svelte-ignore a11y_no_noninteractive_element_to_interactive_role -->
-                        <li 
-                          class="dropdown-item" 
+                        <li
+                          class="dropdown-item"
                           class:highlight={idx === activeProductIndex}
                           onclick={() => selectProduct(prod, index)}
                           role="option"
@@ -526,36 +798,37 @@
                 </td>
 
                 <td>
-                  <input 
-                    type="text" 
-                    class="input-field table-input text-center" 
-                    bind:value={item.unit} 
-                    placeholder="UN" 
+                  <input
+                    type="text"
+                    class="input-field table-input text-center"
+                    bind:value={item.unit}
+                    oninput={markMeaningfulChange}
+                    placeholder="UN"
                   />
                 </td>
 
                 <td>
-                  <input 
-                    type="number" 
+                  <input
+                    type="number"
                     step="any"
-                    class="input-field table-input text-right" 
-                    bind:value={item.quantity} 
-                    oninput={() => updateRowTotal(index)}
+                    class="input-field table-input text-right"
+                    bind:value={item.quantity}
+                    oninput={() => { updateRowTotal(index); markMeaningfulChange(); }}
                     min="0.0001"
-                    required 
+                    required
                   />
                 </td>
 
                 {#if type !== 'livraison'}
                   <td>
-                    <input 
-                      type="number" 
+                    <input
+                      type="number"
                       step="any"
-                      class="input-field table-input text-right" 
-                      bind:value={item.unit_price} 
-                      oninput={() => updateRowTotal(index)}
+                      class="input-field table-input text-right"
+                      bind:value={item.unit_price}
+                      oninput={() => { updateRowTotal(index); markMeaningfulChange(); }}
                       min="0"
-                      required 
+                      required
                     />
                   </td>
                   <td class="text-right val-cell">
@@ -564,9 +837,9 @@
                 {/if}
 
                 <td class="text-center">
-                  <button 
-                    type="button" 
-                    class="delete-row-btn" 
+                  <button
+                    type="button"
+                    class="delete-row-btn"
                     onclick={() => removeRow(index)}
                     aria-label="Delete row"
                   >
@@ -598,7 +871,7 @@
           <!-- TVA Toggler -->
           <div class="total-row border-row">
             <label class="tva-label-toggle">
-              <input type="checkbox" bind:checked={hasTva} />
+              <input type="checkbox" bind:checked={hasTva} onchange={markMeaningfulChange} />
               <span>Apply TVA (19%)</span>
             </label>
             {#if hasTva}
@@ -626,6 +899,7 @@
             id="notes_field"
             class="input-field notes-textarea"
             bind:value={notes}
+            oninput={markMeaningfulChange}
             placeholder="Ex: Livraison effectuée dans les délais convenus. Matériel en bon état..."
             rows="3"
           ></textarea>
@@ -635,10 +909,15 @@
 
     <!-- 7. SUBMIT BUTTONS -->
     <div class="form-actions">
+      <DraftSaveStatus
+        state={draftState}
+        onRetry={() => autosave.retry()}
+        onReload={() => location.reload()}
+      />
       <a href="/" class="btn btn-secondary">Cancel</a>
-      <button 
-        type="submit" 
-        class="btn btn-primary" 
+      <button
+        type="submit"
+        class="btn btn-primary"
         disabled={saving}
       >
         <span>{saving ? 'Creating Document...' : 'Create Document'}</span>
@@ -646,16 +925,6 @@
     </div>
 
   </form>
-
-    <button
-      type="button"
-      class="btn btn-primary floating-add-row no-print"
-      onclick={addRow}
-      aria-label="Add another line item"
-    >
-      <Plus size={18} />
-      <span>Add Row</span>
-    </button>
 
     {#if showPreview}
       <!-- Live Preview Panel on the Right (inside workspace flex) -->
@@ -698,7 +967,7 @@
               </thead>
               <tbody>
                 <tr>
-                  <td style="border: 1px solid #1a1a2e; padding: 4px 6px; width: 50%;"><strong>Date:</strong> {date ? formatDate(date) : '—'}</td>
+                  <td style="border: 1px solid #1a1a2e; padding: 4px 6px; width: 50%;"><strong>Date:</strong> {type === 'facture' ? '' : (date ? formatDate(date) : '—')}</td>
                   <td style="border: 1px solid #1a1a2e; padding: 4px 6px; width: 50%;">
                     {#if contractNumber}
                       <strong>Contrat N°:</strong> {contractNumber} {#if contractDate}du {formatDate(contractDate)}{/if}
@@ -793,9 +1062,13 @@
                   <span style="color: #444; white-space: pre-wrap;">{notes}</span>
                 </div>
               {/if}
-              <div style="display: flex; justify-content: space-between; margin-top: 18px; font-size: 8px; font-weight: 700;">
-                <div>Accusé de réception (Client)</div>
-                <div>Signature &amp; Cachet (Fournisseur)</div>
+            {/if}
+            {#if type !== 'livraison'}
+              <div style="display: flex; justify-content: flex-end; margin-top: auto; padding-top: 18px; font-size: 8px; font-weight: 700;">
+                <div style="text-align: right;">
+                  <div>Signature &amp; Cachet (Fournisseur)</div>
+                  <div style="height: 50px;"></div>
+                </div>
               </div>
             {/if}
           </div>
@@ -970,6 +1243,16 @@
     background-color: var(--color-danger-bg);
     border: 1px solid var(--color-danger);
     color: oklch(0.85 0.15 25);
+  }
+
+  .field-error,
+  .field-error-list {
+    color: var(--color-danger);
+    font-size: var(--text-xs);
+  }
+
+  .field-error-list {
+    margin: var(--space-2) 0 0 var(--space-4);
   }
 
   /* ===================================================
@@ -1202,17 +1485,6 @@
     box-shadow: 0 8px 18px oklch(0 0 0 / 0.08);
   }
 
-  .floating-add-row {
-    display: inline-flex;
-    position: fixed;
-    right: var(--space-6);
-    bottom: var(--space-6);
-    z-index: 120;
-    border-radius: var(--border-radius-pill);
-    box-shadow: var(--shadow-lg), 0 0 0 4px var(--color-accent-glow);
-  }
-
-
   .items-header .section-title {
     border-left: 3px solid var(--color-accent);
     padding-left: var(--space-3);
@@ -1230,11 +1502,6 @@
   }
 
   @media (max-width: 900px) {
-    .floating-add-row {
-      right: var(--space-4);
-      bottom: var(--space-4);
-    }
-
     .items-header-sticky {
       top: 0;
       margin-left: calc(-1 * var(--space-3));
@@ -1288,8 +1555,57 @@
     vertical-align: middle;
   }
 
+  .reorder-column {
+    width: 56px;
+    text-align: center;
+  }
+
+  .reorder-cell {
+    width: 56px;
+    text-align: center;
+  }
+
+  .drag-handle {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 34px;
+    height: 34px;
+    padding: 0;
+    border: 1px solid transparent;
+    border-radius: var(--border-radius-sm);
+    background: transparent;
+    color: var(--text-muted);
+    cursor: grab;
+    transition: color var(--transition-fast), background-color var(--transition-fast), border-color var(--transition-fast);
+  }
+
+  .drag-handle:hover,
+  .drag-handle:focus-visible {
+    color: var(--color-accent);
+    background: var(--color-accent-subtle);
+    border-color: var(--color-accent);
+    outline: none;
+  }
+
+  .drag-handle:active {
+    cursor: grabbing;
+  }
+
   .item-row {
     transition: background-color var(--transition-fast);
+  }
+
+  .item-row.dragging {
+    opacity: 0.45;
+  }
+
+  .item-row.drop-before td {
+    box-shadow: inset 0 3px 0 var(--color-accent);
+  }
+
+  .item-row.drop-after td {
+    box-shadow: inset 0 -3px 0 var(--color-accent);
   }
 
   .item-row:hover {

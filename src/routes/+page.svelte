@@ -1,5 +1,6 @@
 <script lang="ts">
   import { enhance } from '$app/forms';
+  import DraftList from '$lib/components/DraftList.svelte';
   import {
     LayoutDashboard,
     Receipt,
@@ -16,6 +17,8 @@
     Filter,
     Calendar,
     FileSpreadsheet,
+    FileDown,
+    Files,
     Download
   } from '@lucide/svelte';
 
@@ -28,6 +31,9 @@
   let typeFilter = $state('all');
   let dateFrom = $state('');
   let dateTo = $state('');
+  let selectedIds = $state<number[]>([]);
+  let bulkDownloading = $state(false);
+  let bulkError = $state('');
 
   // Reactively filter bills based on search input, type, and date range
   let filteredBills = $derived(
@@ -46,6 +52,10 @@
       return matchesSearch && matchesType && matchesFrom && matchesTo;
     })
   );
+
+  let filteredIds = $derived(filteredBills.map((bill) => bill.id).filter((id): id is number => typeof id === 'number'));
+  let selectedVisibleCount = $derived(selectedIds.filter((id) => filteredIds.includes(id)).length);
+  let allVisibleSelected = $derived(filteredIds.length > 0 && filteredIds.every((id) => selectedIds.includes(id)));
 
   // Helper to format date (YYYY-MM-DD -> DD/MM/YYYY)
   function formatDate(dStr: string): string {
@@ -69,12 +79,81 @@
     return formatDate(datePart);
   }
 
+  // Open the native date picker when the field is clicked/focused anywhere.
+  // showPicker() is supported in modern Chromium/Edge; guarded for safety.
+  function openPicker(e: Event) {
+    const el = e.currentTarget as HTMLInputElement & { showPicker?: () => void };
+    try {
+      el.showPicker?.();
+    } catch {
+      // showPicker can throw if not user-activated — ignore, normal click still works
+    }
+  }
+
   // Clear filters
   function clearFilters() {
     searchQuery = '';
     typeFilter = 'all';
     dateFrom = '';
     dateTo = '';
+  }
+
+  function isSelected(id: number | undefined): boolean {
+    return typeof id === 'number' && selectedIds.includes(id);
+  }
+
+  function toggleBill(id: number | undefined, checked: boolean) {
+    if (typeof id !== 'number') return;
+    bulkError = '';
+    if (checked) {
+      if (!selectedIds.includes(id)) selectedIds = [...selectedIds, id];
+      return;
+    }
+    selectedIds = selectedIds.filter((value) => value !== id);
+  }
+
+  function toggleAllVisible(checked: boolean) {
+    bulkError = '';
+    if (checked) {
+      selectedIds = [...new Set([...selectedIds, ...filteredIds])];
+      return;
+    }
+    selectedIds = selectedIds.filter((id) => !filteredIds.includes(id));
+  }
+
+  function clearSelection() {
+    selectedIds = [];
+    bulkError = '';
+  }
+
+  async function downloadSelected(mode: 'saved' | 'bundle') {
+    if (selectedIds.length === 0 || bulkDownloading) return;
+    bulkDownloading = true;
+    bulkError = '';
+    try {
+      const response = await fetch(`/api/bills/pdf/bulk?mode=${mode}&ids=${selectedIds.join(',')}`);
+      if (!response.ok) {
+        const body = await response.json().catch(() => ({}));
+        throw new Error(body.error || 'Bulk download failed');
+      }
+
+      const blob = await response.blob();
+      const disposition = response.headers.get('content-disposition') || '';
+      const match = disposition.match(/filename="?([^"]+)"?/i);
+      const filename = match?.[1] || (mode === 'bundle' ? 'bill-bundles.zip' : 'bill-pdfs.zip');
+      const objectUrl = URL.createObjectURL(blob);
+      const anchor = document.createElement('a');
+      anchor.href = objectUrl;
+      anchor.download = filename;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      URL.revokeObjectURL(objectUrl);
+    } catch (error) {
+      bulkError = error instanceof Error ? error.message : 'Bulk download failed';
+    } finally {
+      bulkDownloading = false;
+    }
   }
 </script>
 
@@ -151,6 +230,10 @@
     </div>
   </div>
 
+  {#if data.drafts.length > 0}
+    <DraftList drafts={data.drafts} />
+  {/if}
+
   <!-- 2. SEARCH AND FILTER TOOLS -->
   <div class="filter-bar animate-in" style="animation-delay: 380ms;">
     <div class="search-input-wrapper">
@@ -181,12 +264,14 @@
       </div>
 
       <div class="date-range-wrapper">
-        <Calendar size={15} class="date-range-icon" />
+        <Calendar size={16} class="date-range-icon" />
         <input
           type="date"
           class="input-field date-input"
           bind:value={dateFrom}
           max={dateTo || undefined}
+          onclick={openPicker}
+          onfocus={openPicker}
           title="From date"
           aria-label="Filter from date"
         />
@@ -196,6 +281,8 @@
           class="input-field date-input"
           bind:value={dateTo}
           min={dateFrom || undefined}
+          onclick={openPicker}
+          onfocus={openPicker}
           title="To date"
           aria-label="Filter to date"
         />
@@ -211,7 +298,45 @@
 
   <!-- 3. DATABASE LOGS TABLE -->
   <div class="logs-section animate-in" style="animation-delay: 440ms;">
-    <h3 class="section-title">Document History</h3>
+    <div class="logs-header">
+      <h3 class="section-title">Document History</h3>
+      {#if selectedIds.length > 0}
+        <div class="bulk-bar" role="region" aria-label="Bulk document actions">
+          <div class="bulk-copy">
+            <strong>{selectedIds.length}</strong>
+            <span>selected{selectedVisibleCount !== selectedIds.length ? ` · ${selectedVisibleCount} visible` : ''}</span>
+          </div>
+          <div class="bulk-actions">
+            <button
+              type="button"
+              class="btn btn-primary btn-compact"
+              disabled={bulkDownloading}
+              onclick={() => void downloadSelected('saved')}
+            >
+              <FileDown size={16} />
+              <span>{bulkDownloading ? 'Preparing…' : 'Download PDFs'}</span>
+            </button>
+            <button
+              type="button"
+              class="btn btn-secondary btn-compact"
+              disabled={bulkDownloading}
+              onclick={() => void downloadSelected('bundle')}
+            >
+              <Files size={16} />
+              <span>Download bundles</span>
+            </button>
+            <button type="button" class="btn btn-secondary btn-compact" disabled={bulkDownloading} onclick={clearSelection}>
+              <X size={16} />
+              <span>Clear</span>
+            </button>
+          </div>
+        </div>
+      {/if}
+    </div>
+
+    {#if bulkError}
+      <div class="bulk-error" role="alert">{bulkError}</div>
+    {/if}
     
     {#if filteredBills.length === 0}
       <div class="empty-state-box">
@@ -230,6 +355,16 @@
         <table class="logs-table">
           <thead>
             <tr>
+              <th class="select-col">
+                <input
+                  type="checkbox"
+                  class="row-checkbox"
+                  checked={allVisibleSelected}
+                  indeterminate={selectedVisibleCount > 0 && !allVisibleSelected}
+                  onchange={(event) => toggleAllVisible((event.currentTarget as HTMLInputElement).checked)}
+                  aria-label="Select all visible documents"
+                />
+              </th>
               <th style="width: 120px;">N° Document</th>
               <th style="width: 130px;">Type</th>
               <th>Customer / Client</th>
@@ -241,7 +376,20 @@
           </thead>
           <tbody>
             {#each filteredBills as bill, i (bill.id)}
-              <tr class="log-row" style="animation: fadeInUp 0.4s var(--ease-spring) both; animation-delay: {Math.min(i * 40, 400)}ms;">
+              <tr
+                class="log-row"
+                class:selected={isSelected(bill.id)}
+                style="animation: fadeInUp 0.4s var(--ease-spring) both; animation-delay: {Math.min(i * 40, 400)}ms;"
+              >
+                <td class="select-col">
+                  <input
+                    type="checkbox"
+                    class="row-checkbox"
+                    checked={isSelected(bill.id)}
+                    onchange={(event) => toggleBill(bill.id, (event.currentTarget as HTMLInputElement).checked)}
+                    aria-label={`Select document ${bill.bill_number}`}
+                  />
+                </td>
                 <!-- Document ID -->
                 <td class="doc-num-cell">
                   {bill.bill_number}
@@ -294,6 +442,14 @@
 
                     <a href="/bills/{bill.id}/edit" class="action-btn edit-btn" title="Edit">
                       <Edit3 size={15} />
+                    </a>
+
+                    <a href="/api/bills/{bill.id}/pdf?mode=saved" class="action-btn pdf-btn" title="Download saved document as PDF" aria-label="Download {bill.bill_number} as PDF">
+                      <FileDown size={15} />
+                    </a>
+
+                    <a href="/api/bills/{bill.id}/pdf?mode=bundle" class="action-btn bundle-pdf-btn" title="Download full PDF bundle" aria-label="Download full PDF bundle for {bill.bill_number}">
+                      <Files size={15} />
                     </a>
 
                     <form method="POST" action="?/duplicateBill" use:enhance>
@@ -620,14 +776,38 @@
     border: none;
     background: transparent;
     padding: var(--space-2) var(--space-1);
-    width: 130px;
-    color-scheme: light dark;
+    width: 140px;
+    color: var(--text-primary);
+    /* Default to LIGHT so the native control (text + calendar icon) is dark
+       on the white field. Overridden to dark below when the app is in dark mode.
+       This ignores the OS setting, which was making the icon invisible. */
+    color-scheme: light;
     cursor: pointer;
+  }
+
+  /* Follow the APP theme, not the OS, for the native date control */
+  :global(:root[data-theme='dark']) .date-input {
+    color-scheme: dark;
   }
 
   .date-input:focus {
     outline: none;
     box-shadow: none;
+  }
+
+  /* Make the built-in calendar picker icon clearly visible & clickable */
+  .date-input::-webkit-calendar-picker-indicator {
+    cursor: pointer;
+    opacity: 0.85;
+    padding: 2px;
+    border-radius: var(--border-radius-sm);
+    transition: opacity var(--duration-fast) var(--ease-spring),
+                background var(--duration-fast) var(--ease-spring);
+  }
+
+  .date-input::-webkit-calendar-picker-indicator:hover {
+    opacity: 1;
+    background: var(--bg-hover);
   }
 
   .date-range-sep {
@@ -665,14 +845,87 @@
     padding-bottom: var(--space-3);
   }
 
+  .logs-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: var(--space-4);
+    margin-bottom: var(--space-5);
+  }
+
   .section-title {
     font-family: var(--font-display);
     font-size: var(--text-lg);
     font-weight: 700;
     color: var(--text-primary);
-    margin-bottom: var(--space-5);
+    margin-bottom: 0;
     padding-left: var(--space-3);
     border-left: 3px solid var(--color-accent);
+  }
+
+  .bulk-bar {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: var(--space-3);
+    flex-wrap: wrap;
+    padding: var(--space-2) var(--space-3);
+    border: 1px solid color-mix(in oklab, var(--color-accent) 25%, var(--border-color));
+    border-radius: 12px;
+    background: var(--color-accent-subtle);
+  }
+
+  .bulk-copy {
+    display: inline-flex;
+    align-items: baseline;
+    gap: var(--space-2);
+    color: var(--text-secondary);
+    font-size: var(--text-sm);
+  }
+
+  .bulk-copy strong {
+    font-family: var(--font-display);
+    color: var(--text-primary);
+    font-size: var(--text-md);
+  }
+
+  .bulk-actions {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    flex-wrap: wrap;
+  }
+
+  .btn-compact {
+    min-height: 2.4rem;
+    padding: 0.5rem 0.85rem;
+  }
+
+  .bulk-error {
+    margin: calc(-1 * var(--space-3)) 0 var(--space-4);
+    padding: var(--space-3) var(--space-4);
+    border-radius: 10px;
+    border: 1px solid color-mix(in oklab, var(--color-danger) 35%, transparent);
+    background: var(--color-danger-bg);
+    color: var(--color-danger);
+    font-size: var(--text-sm);
+    font-weight: 600;
+  }
+
+  .select-col {
+    width: 44px;
+    text-align: center;
+  }
+
+  .row-checkbox {
+    width: 1rem;
+    height: 1rem;
+    accent-color: var(--color-accent);
+    cursor: pointer;
+  }
+
+  .log-row.selected {
+    background: color-mix(in oklab, var(--color-accent-subtle) 70%, transparent);
   }
 
   .table-responsive {

@@ -5,8 +5,7 @@ import { join } from 'path';
 const dbPath = join(process.cwd(), 'billing.db');
 const db = new Database(dbPath);
 
-// Enable foreign keys
-db.pragma('foreign_keys = ON');
+// Foreign keys are enabled by initializeSchema() for production and test databases.
 
 export interface SellerSettings {
   id?: number;
@@ -53,6 +52,7 @@ export interface Bill {
   montant_ttc: number;
   amount_in_words: string;
   notes?: string;
+  source_draft_key?: string | null;
   created_at?: string;
 }
 
@@ -67,10 +67,13 @@ export interface BillItem {
   sort_order: number;
 }
 
-// Initialize tables if they do not exist
-export function initDb() {
+// Initialize tables if they do not exist. Tests can disable catalog seeds.
+export function initializeSchema(database: Database.Database, options: { seed?: boolean } = {}) {
+  const seed = options.seed ?? true;
+  database.pragma('foreign_keys = ON');
+
   // 1. Settings Table (strict limit to 1 row via Check constraint)
-  db.exec(`
+  database.exec(`
     CREATE TABLE IF NOT EXISTS settings (
       id INTEGER PRIMARY KEY CHECK (id = 1),
       company_name TEXT NOT NULL,
@@ -87,7 +90,7 @@ export function initDb() {
   `);
 
   // 2. Clients Table
-  db.exec(`
+  database.exec(`
     CREATE TABLE IF NOT EXISTS clients (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       code TEXT UNIQUE NOT NULL,
@@ -97,7 +100,7 @@ export function initDb() {
   `);
 
   // 3. Products Table
-  db.exec(`
+  database.exec(`
     CREATE TABLE IF NOT EXISTS products (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       name TEXT UNIQUE NOT NULL,
@@ -108,7 +111,7 @@ export function initDb() {
   `);
 
   // 4. Bills Table
-  db.exec(`
+  database.exec(`
     CREATE TABLE IF NOT EXISTS bills (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       bill_number TEXT UNIQUE NOT NULL,
@@ -125,19 +128,25 @@ export function initDb() {
       montant_ttc REAL NOT NULL,
       amount_in_words TEXT NOT NULL,
       notes TEXT,
+      source_draft_key TEXT,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )
   `);
 
-  // Migration: add notes column if it doesn't exist (safe on existing DBs)
-  try {
-    db.exec('ALTER TABLE bills ADD COLUMN notes TEXT');
-  } catch {
-    // Column already exists — ignore
+  // Guarded migrations keep existing billing.db files compatible.
+  for (const statement of [
+    'ALTER TABLE bills ADD COLUMN notes TEXT',
+    'ALTER TABLE bills ADD COLUMN source_draft_key TEXT'
+  ]) {
+    try {
+      database.exec(statement);
+    } catch (error) {
+      if (!(error instanceof Error) || !error.message.includes('duplicate column name')) throw error;
+    }
   }
 
   // 5. Bill Items Table
-  db.exec(`
+  database.exec(`
     CREATE TABLE IF NOT EXISTS bill_items (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       bill_id INTEGER REFERENCES bills(id) ON DELETE CASCADE,
@@ -150,17 +159,33 @@ export function initDb() {
     )
   `);
 
+  database.exec(`
+    CREATE UNIQUE INDEX IF NOT EXISTS bills_source_draft_key_unique
+    ON bills(source_draft_key)
+    WHERE source_draft_key IS NOT NULL;
+
+    CREATE TABLE IF NOT EXISTS bill_drafts (
+      draft_key TEXT PRIMARY KEY,
+      payload_json TEXT NOT NULL,
+      revision INTEGER NOT NULL CHECK(revision > 0),
+      created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+  `);
+
+  if (!seed) return;
+
   // Seed default company settings (real TECH IP profile) if empty
-  const settingsCount = db.prepare('SELECT COUNT(*) as count FROM settings').get() as { count: number };
+  const settingsCount = database.prepare('SELECT COUNT(*) as count FROM settings').get() as { count: number };
   if (settingsCount.count === 0) {
-    db.prepare(`
+    database.prepare(`
       INSERT INTO settings (id, company_name, address, phone, email, rc, art, nif, nis, rib)
       VALUES (1, 'TECH IP', 'Lotissement souffey N 01 Khemis Miliana', '(+213) 699847473', 'ghebache05110@gmail.com', '44/00-3875390.A.26', '', '15802060020146504400', '795802060020144', '00300281000156530079 BADR Agence khemis-miliana 281 GHEBACHE ABDELKADER')
     `).run();
   }
 
   // Seed some initial products/clients for testing if empty
-  const productsCount = db.prepare('SELECT COUNT(*) as count FROM products').get() as { count: number };
+  const productsCount = database.prepare('SELECT COUNT(*) as count FROM products').get() as { count: number };
   if (productsCount.count === 0) {
     const productsSeed = [
       { name: 'pointeuse faciale', description: 'pointeuse faciale de marque', unit: 'UN', price: 160000 },
@@ -170,25 +195,33 @@ export function initDb() {
       { name: 'Dessiccateur en verre', description: 'Dessiccateur en verre avec Robinet. Diamètre 300 mm.', unit: 'UN', price: 120000 }
     ];
 
-    const insertProduct = db.prepare(`
+    const insertProduct = database.prepare(`
       INSERT INTO products (name, description, unit, default_price)
       VALUES (@name, @description, @unit, @price)
     `);
 
-    db.transaction(() => {
+    database.transaction(() => {
       for (const prod of productsSeed) {
         insertProduct.run(prod);
       }
     })();
   }
 
-  const clientsCount = db.prepare('SELECT COUNT(*) as count FROM clients').get() as { count: number };
+  const clientsCount = database.prepare('SELECT COUNT(*) as count FROM clients').get() as { count: number };
   if (clientsCount.count === 0) {
-    db.prepare(`
+    database.prepare(`
       INSERT INTO clients (code, name, address)
       VALUES ('C001', 'Faculté des sciences et de technologie', 'Université de Tamenrasset, Tamenrasset, 10000, Algérie')
     `).run();
   }
+}
+
+export function initDb() {
+  initializeSchema(db);
+}
+
+export function getDatabase(): Database.Database {
+  return db;
 }
 
 // ----------------------------------------------------
@@ -375,24 +408,44 @@ export function getNextBillNumber(type: 'facture' | 'proforma' | 'livraison'): s
   return `${year}-0001`;
 }
 
-// Create a bill in a transaction, auto-saving new clients/products
-export function createBill(
+export function insertFinalBill(
+  database: Database.Database,
   bill: Omit<Bill, 'id' | 'created_at'>,
   items: Omit<BillItem, 'id' | 'bill_id'>[]
 ): { id: number } {
-  const insertBill = db.prepare(`
+  let clientId = bill.client_id ?? null;
+  if (bill.client_code_snapshot) {
+    const existing = database.prepare('SELECT id FROM clients WHERE code = ?').get(bill.client_code_snapshot) as { id: number } | undefined;
+    if (existing) {
+      database.prepare('UPDATE clients SET name = ?, address = ? WHERE id = ?')
+        .run(bill.client_name_snapshot, bill.client_address_snapshot, existing.id);
+      clientId = existing.id;
+    } else {
+      const result = database.prepare('INSERT INTO clients (code, name, address) VALUES (?, ?, ?)')
+        .run(bill.client_code_snapshot, bill.client_name_snapshot, bill.client_address_snapshot);
+      clientId = Number(result.lastInsertRowid);
+    }
+  }
+
+  const info = database.prepare(`
     INSERT INTO bills (
       bill_number, type, date, contract_number, contract_date, client_id,
       client_name_snapshot, client_address_snapshot, client_code_snapshot,
-      tva_rate, montant_ht, montant_ttc, amount_in_words, notes
+      tva_rate, montant_ht, montant_ttc, amount_in_words, notes, source_draft_key
     ) VALUES (
       @bill_number, @type, @date, @contract_number, @contract_date, @client_id,
       @client_name_snapshot, @client_address_snapshot, @client_code_snapshot,
-      @tva_rate, @montant_ht, @montant_ttc, @amount_in_words, @notes
+      @tva_rate, @montant_ht, @montant_ttc, @amount_in_words, @notes, @source_draft_key
     )
-  `);
+  `).run({
+    ...bill,
+    client_id: clientId,
+    source_draft_key: bill.source_draft_key ?? null,
+    notes: bill.notes ?? ''
+  });
+  const billId = Number(info.lastInsertRowid);
 
-  const insertItem = db.prepare(`
+  const insertItem = database.prepare(`
     INSERT INTO bill_items (
       bill_id, product_name, unit, quantity, unit_price, total_price, sort_order
     ) VALUES (
@@ -400,47 +453,29 @@ export function createBill(
     )
   `);
 
-  let billId = 0;
-
-  db.transaction(() => {
-    // 1. If client is new (or has a code but isn't in db), auto-save to catalog
-    let clientId = bill.client_id;
-    if (bill.client_code_snapshot) {
-      const clientResult = createClient({
-        code: bill.client_code_snapshot,
-        name: bill.client_name_snapshot,
-        address: bill.client_address_snapshot
-      });
-      clientId = clientResult.id;
-    }
-
-    // 2. Insert the main bill
-    const info = insertBill.run({
-      ...bill,
-      client_id: clientId
-    });
-    billId = info.lastInsertRowid as number;
-
-    // 3. Process and insert each item
-    for (const item of items) {
-      // Auto-save new products to the catalog database
-      if (item.product_name) {
-        createProduct({
-          name: item.product_name,
-          description: '',
-          unit: item.unit || 'UN',
-          default_price: item.unit_price || 0
-        });
+  for (const item of items) {
+    if (item.product_name) {
+      const existing = database.prepare('SELECT id FROM products WHERE name = ?').get(item.product_name) as { id: number } | undefined;
+      if (existing) {
+        database.prepare('UPDATE products SET unit = ?, default_price = ? WHERE id = ?')
+          .run(item.unit || 'UN', item.unit_price || 0, existing.id);
+      } else {
+        database.prepare('INSERT INTO products (name, description, unit, default_price) VALUES (?, ?, ?, ?)')
+          .run(item.product_name, '', item.unit || 'UN', item.unit_price || 0);
       }
-
-      insertItem.run({
-        ...item,
-        bill_id: billId
-      });
     }
-  })();
+    insertItem.run({ ...item, bill_id: billId });
+  }
 
   return { id: billId };
+}
+
+// Create a bill in a transaction, auto-saving new clients/products.
+export function createBill(
+  bill: Omit<Bill, 'id' | 'created_at'>,
+  items: Omit<BillItem, 'id' | 'bill_id'>[]
+): { id: number } {
+  return db.transaction(() => insertFinalBill(db, bill, items))();
 }
 
 // Update a bill in a transaction, deleting old items and adding new ones

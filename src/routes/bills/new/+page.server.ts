@@ -1,14 +1,25 @@
 import { getSettings, getNextBillNumber, createBill } from '$lib/server/db';
-import { fail, redirect } from '@sveltejs/kit';
+import { draftStore, DraftValidationError } from '$lib/server/bill-drafts';
+import { error, fail, redirect } from '@sveltejs/kit';
 import type { PageServerLoad, Actions } from './$types';
 
-export const load: PageServerLoad = async () => {
-  const settings = getSettings();
-  const defaultNumber = getNextBillNumber('facture');
-  
+export const load: PageServerLoad = async ({ url }) => {
+  const draftKey = url.searchParams.get('draft');
+  let draft = null;
+  if (draftKey) {
+    try {
+      draft = draftStore.getDraft(draftKey);
+    } catch (cause) {
+      if (cause instanceof DraftValidationError) throw error(400, 'Invalid draft key');
+      throw cause;
+    }
+    if (!draft) throw error(404, 'Draft not found');
+  }
+
   return {
-    settings,
-    defaultNumber
+    settings: getSettings(),
+    defaultNumber: getNextBillNumber('facture'),
+    draft
   };
 };
 
