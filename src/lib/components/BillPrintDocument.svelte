@@ -15,15 +15,33 @@
   } = $props();
 
   function partitionItems(itemsList: BillItem[], isLivraison: boolean) {
-    const firstPageCapacity = isLivraison ? 16 : 11;
-    const continuationCapacity = isLivraison ? 23 : 18;
+    // ponytail: capacities tuned for 1.5x zoom layout; retune if zoom changes.
+    // Facture last/alone pages reserve ~380px for totals + signature; livraison skips both.
+    const aloneCap = isLivraison ? 16 : 11; // single page: full header + totals/signature
+    const firstManyCap = 15; // first of many: full header, no totals/signature
+    const middleCap = 22; // minimal header, no totals/signature
+    const lastCap = isLivraison ? 22 : 12; // minimal header + totals/signature
 
-    if (itemsList.length <= firstPageCapacity) return [itemsList];
+    const len = itemsList.length;
+    if (len <= aloneCap) return [itemsList];
 
-    const pages = [itemsList.slice(0, firstPageCapacity)];
-    for (let index = firstPageCapacity; index < itemsList.length; index += continuationCapacity) {
-      pages.push(itemsList.slice(index, index + continuationCapacity));
+    // First page fills up, but must leave at least one item for a later page
+    const firstTake = Math.min(firstManyCap, len - 1);
+    const pages = [itemsList.slice(0, firstTake)];
+    let index = firstTake;
+
+    while (len - index > middleCap) {
+      pages.push(itemsList.slice(index, index + middleCap));
+      index += middleCap;
     }
+
+    // Remainder is the last page; if it exceeds lastCap, split off a middle page
+    const remaining = len - index;
+    if (remaining > lastCap) {
+      pages.push(itemsList.slice(index, index + remaining - lastCap));
+      index += remaining - lastCap;
+    }
+    pages.push(itemsList.slice(index));
     return pages;
   }
 
@@ -307,7 +325,7 @@
     color: #1a1a2e;
     width: 21cm;
     min-height: 29.7cm;
-    padding: 1.8cm 2cm;
+    padding: 0.9cm 1cm 1.2cm;
     margin: 0 auto;
     box-shadow: var(--shadow-lg);
     border: 1px solid oklch(0.3 0.01 250 / 0.3);
@@ -321,6 +339,11 @@
   .a4-page, .a4-page h1, .a4-page p, .a4-page td, .a4-page th, .a4-page span {
     font-family: 'DM Sans', system-ui, -apple-system, sans-serif;
     color: #1a1a2e;
+  }
+
+  /* Content rendered at 1.5x so printed output is readable */
+  .a4-page > * {
+    zoom: 1.5;
   }
 
   /* ============================================================
@@ -650,7 +673,7 @@
     justify-content: space-between;
     margin-top: auto;
     padding: 0 8px;
-    padding-top: 22px;
+    padding-top: 8px;
   }
 
   .signature-box {
@@ -664,7 +687,7 @@
   }
 
   .signature-space {
-    height: 75px;
+    height: 40px;
   }
 
   /* ============================================================
@@ -710,7 +733,7 @@
       border: none !important;
       border-radius: 0 !important;
       margin: 0 !important;
-      padding: 1.8cm 2cm !important;
+      padding: 0.9cm 1cm 1.2cm !important;
       width: 210mm !important;
       min-height: 297mm !important;
       height: 297mm !important;
