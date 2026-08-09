@@ -15,12 +15,12 @@
   } = $props();
 
   function partitionItems(itemsList: BillItem[], isLivraison: boolean) {
-    // ponytail: capacities tuned for 1.5x zoom layout; retune if zoom changes.
-    // Facture last/alone pages reserve ~380px for totals + signature; livraison skips both.
-    const aloneCap = isLivraison ? 16 : 11; // single page: full header + totals/signature
-    const firstManyCap = 15; // first of many: full header, no totals/signature
-    const middleCap = 22; // minimal header, no totals/signature
-    const lastCap = isLivraison ? 22 : 12; // minimal header + totals/signature
+    // ponytail: capacities tuned for 1.3x zoom layout; retune if zoom changes.
+    // Facture last/alone pages reserve space for totals + signature; livraison skips both.
+    const aloneCap = isLivraison ? 18 : 15; // single page: full header + totals/signature
+    const firstManyCap = 17; // first of many: full header, no totals/signature
+    const middleCap = 24; // minimal header, no totals/signature
+    const lastCap = isLivraison ? 24 : 15; // minimal header + totals/signature
 
     const len = itemsList.length;
     if (len <= aloneCap) return [itemsList];
@@ -261,7 +261,7 @@
                     <td class="val">{bill.montant_ht.toLocaleString(undefined, { minimumFractionDigits: 2 })} DA</td>
                   </tr>
                   {#if bill.tva_rate > 0}
-                    <tr>
+                    <tr class="tva-row-tr">
                       <td class="lbl">TVA ({bill.tva_rate}%)</td>
                       <td class="val">&nbsp;</td>
                     </tr>
@@ -325,7 +325,7 @@
     color: #1a1a2e;
     width: 21cm;
     min-height: 29.7cm;
-    padding: 0.9cm 1cm 1.2cm;
+    padding: 1.5cm 1.7cm 1.2cm;
     margin: 0 auto;
     box-shadow: var(--shadow-lg);
     border: 1px solid oklch(0.3 0.01 250 / 0.3);
@@ -341,9 +341,9 @@
     color: #1a1a2e;
   }
 
-  /* Content rendered at 1.5x so printed output is readable */
+  /* Matches the previous downloaded PDF size in both preview and download */
   .a4-page > * {
-    zoom: 1.5;
+    zoom: 1.3;
   }
 
   /* ============================================================
@@ -626,6 +626,11 @@
     background-color: #f0f0f5;
   }
 
+  /* Taller TVA row: room to hand-write the tax amount after printing */
+  .totals-table .tva-row-tr td {
+    height: 36px;
+  }
+
   .ttc-row-tr .lbl,
   .ttc-row-tr .val {
     font-weight: 800 !important;
@@ -671,9 +676,8 @@
   .signature-block {
     display: flex;
     justify-content: space-between;
-    margin-top: auto;
     padding: 0 8px;
-    padding-top: 8px;
+    padding-top: 2px;
   }
 
   .signature-box {
@@ -682,12 +686,12 @@
     font-weight: 700;
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    gap: 5px;
     color: #1a1a2e;
   }
 
   .signature-space {
-    height: 40px;
+    height: 24px;
   }
 
   /* ============================================================
@@ -733,7 +737,7 @@
       border: none !important;
       border-radius: 0 !important;
       margin: 0 !important;
-      padding: 0.9cm 1cm 1.2cm !important;
+      padding: 1.5cm 1.7cm 1.2cm !important;
       width: 210mm !important;
       min-height: 297mm !important;
       height: 297mm !important;
