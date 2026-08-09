@@ -17,10 +17,10 @@
   function partitionItems(itemsList: BillItem[], isLivraison: boolean) {
     // ponytail: capacities tuned for 1.3x zoom layout; retune if zoom changes.
     // Facture last/alone pages reserve space for totals + signature; livraison skips both.
-    const aloneCap = isLivraison ? 18 : 15; // single page: full header + totals/signature
-    const firstManyCap = 17; // first of many: full header, no totals/signature
-    const middleCap = 24; // minimal header, no totals/signature
-    const lastCap = isLivraison ? 24 : 15; // minimal header + totals/signature
+    const aloneCap = isLivraison ? 22 : 15; // single page: full header + footer + signature above reserved bottom zone
+    const firstManyCap = 20; // first of many: full header, no totals/signature
+    const middleCap = 26; // minimal header, no totals/signature
+    const lastCap = isLivraison ? 26 : 20; // minimal header + totals/signature; livraison fills to bottom margin
 
     const len = itemsList.length;
     if (len <= aloneCap) return [itemsList];
@@ -677,7 +677,7 @@
     display: flex;
     justify-content: space-between;
     padding: 0 8px;
-    padding-top: 2px;
+    padding-top: 14px;
   }
 
   .signature-box {
