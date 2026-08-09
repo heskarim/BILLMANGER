@@ -17,10 +17,10 @@
   function partitionItems(itemsList: BillItem[], isLivraison: boolean) {
     // ponytail: capacities tuned for 1.3x zoom layout; retune if zoom changes.
     // Facture last/alone pages reserve space for totals + signature; livraison skips both.
-    const aloneCap = isLivraison ? 22 : 15; // single page: full header + footer + signature above reserved bottom zone
+    const aloneCap = isLivraison ? 22 : 10; // single page: full header + footer + stamp-sized signature zone
     const firstManyCap = 20; // first of many: full header, no totals/signature
     const middleCap = 26; // minimal header, no totals/signature
-    const lastCap = isLivraison ? 26 : 20; // minimal header + totals/signature; livraison fills to bottom margin
+    const lastCap = isLivraison ? 26 : 15; // minimal header + totals + stamp-sized signature zone
 
     const len = itemsList.length;
     if (len <= aloneCap) return [itemsList];
@@ -565,7 +565,7 @@
      ============================================================ */
   .footer-summary-grid {
     display: grid;
-    grid-template-columns: 1.5fr 1.1fr;
+    grid-template-columns: 1.5fr 1.55fr;
     gap: 12px;
     margin-top: 8px;
     border-top: 2px solid #1a1a2e;
@@ -691,7 +691,7 @@
   }
 
   .signature-space {
-    height: 24px;
+    height: 120px;
   }
 
   /* ============================================================
